@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.npm/
+package-lock.json
+
+# Flutter/Dart build and tool files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Agent files
+.agents/
+.codex/

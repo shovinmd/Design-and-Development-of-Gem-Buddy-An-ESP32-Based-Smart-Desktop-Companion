@@ -1,0 +1,45 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'screens/splash_screen.dart';
+import 'theme/colors.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(
+    const ProviderScope(
+      child: GemApp(),
+    ),
+  );
+}
+
+class GemApp extends StatelessWidget {
+  const GemApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'GEM',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        primaryColor: GemColors.bgPrimary,
+        scaffoldBackgroundColor: Colors.transparent,
+        fontFamily: 'monospace', // Gives a premium technical retro aesthetic
+        colorScheme: const ColorScheme.light(
+          primary: GemColors.accentBlue,
+          secondary: GemColors.accentPurple,
+          surface: GemColors.bgSecondary,
+          error: GemColors.statusAlert,
+          onPrimary: Colors.white,
+          onSecondary: Colors.white,
+        ),
+        sliderTheme: const SliderThemeData(
+          activeTrackColor: GemColors.accentBlue,
+          thumbColor: GemColors.accentBlue,
+        ),
+      ),
+      home: const SplashScreen(),
+    );
+  }
+}

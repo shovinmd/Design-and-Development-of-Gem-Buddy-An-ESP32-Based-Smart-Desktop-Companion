@@ -1,0 +1,14 @@
+{
+  "name": "gem-webhook-broker",
+  "version": "1.0.0",
+  "description": "Receives webhook alerts from GEM (ESP32) and forwards them to the Flutter app using WebSockets",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}
