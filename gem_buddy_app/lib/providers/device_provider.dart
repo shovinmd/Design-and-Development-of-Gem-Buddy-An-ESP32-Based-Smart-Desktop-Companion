@@ -577,10 +577,26 @@ class DeviceNotifier extends Notifier<DeviceState> {
 
   WebSocketChannel? _wsChannel;
 
+  String _getRestUrl(String endpoint) {
+    final ip = state.brokerIpAddress;
+    if (ip.contains('onrender.com') || ip.contains('herokuapp.com') || ip.startsWith('http://') || ip.startsWith('https://')) {
+      String baseUrl = ip;
+      if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+        baseUrl = 'https://$baseUrl'; // Render uses HTTPS
+      }
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+      }
+      return '$baseUrl$endpoint';
+    } else {
+      return 'http://$ip:3000$endpoint';
+    }
+  }
+
   Future<void> fetchSecurityLogs() async {
     if (state.brokerIpAddress.isEmpty) return;
     try {
-      final response = await http.get(Uri.parse('http://${state.brokerIpAddress}:3000/api/guard/logs'))
+      final response = await http.get(Uri.parse(_getRestUrl('/api/guard/logs')))
           .timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         final List<dynamic> logs = json.decode(response.body);
@@ -597,7 +613,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     if (state.brokerIpAddress.isNotEmpty) {
       try {
         final response = await http.post(
-          Uri.parse('http://${state.brokerIpAddress}:3000/api/guard/toggle'),
+          Uri.parse(_getRestUrl('/api/guard/toggle')),
           headers: {'Content-Type': 'application/json'},
           body: json.encode({'active': active}),
         ).timeout(const Duration(seconds: 4));
@@ -624,7 +640,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
       return true;
     }
     try {
-      final response = await http.post(Uri.parse('http://${state.brokerIpAddress}:3000/api/guard/clear'))
+      final response = await http.post(Uri.parse(_getRestUrl('/api/guard/clear')))
           .timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         state = state.copyWith(securityLogs: const []);
@@ -643,7 +659,16 @@ class DeviceNotifier extends Notifier<DeviceState> {
     state = state.copyWith(brokerIpAddress: brokerIp, isBrokerConnected: false);
     
     try {
-      final wsUrl = 'ws://$brokerIp:3000';
+      String wsUrl;
+      if (brokerIp.contains('onrender.com') || brokerIp.contains('herokuapp.com') || brokerIp.startsWith('wss://') || brokerIp.startsWith('ws://')) {
+        wsUrl = brokerIp;
+        if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+          wsUrl = 'wss://$wsUrl'; // Render uses secure WSS
+        }
+      } else {
+        wsUrl = 'ws://$brokerIp:3000';
+      }
+
       _wsChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
       
       state = state.copyWith(isBrokerConnected: true);
