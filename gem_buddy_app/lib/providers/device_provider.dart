@@ -369,6 +369,24 @@ class DeviceNotifier extends Notifier<DeviceState> {
     }
   }
 
+  Future<bool> checkSetupPortalConnection() async {
+    try {
+      final response = await http.get(Uri.parse('http://$defaultSetupIp/api/state'))
+          .timeout(const Duration(seconds: 3));
+      if (response.statusCode == 200) {
+        state = state.copyWith(
+          ipAddress: defaultSetupIp,
+          isSimulated: false,
+          isConnected: true,
+        );
+        return true;
+      }
+    } catch (_) {
+      // Unreachable
+    }
+    return false;
+  }
+
   Future<bool> saveSettings({
     String? userName,
     String? deviceName,

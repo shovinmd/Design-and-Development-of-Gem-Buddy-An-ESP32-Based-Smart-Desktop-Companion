@@ -10,7 +10,7 @@ constexpr uint8_t PIN_OLED_SCL = 22;
 constexpr uint8_t PIN_TOUCH = 4;   // Boot strap pin, keep idle LOW at reset.
 // ADC1 inputs so Wi-Fi can stay compatible
 constexpr uint8_t PIN_LDR_ADC = 35;
-// constexpr uint8_t PIN_BATTERY_ADC = 34; // Removed per user request
+constexpr uint8_t PIN_BATTERY_ADC = 34;
 // LED outputs
 constexpr uint8_t PIN_LED1 = 25;
 constexpr uint8_t PIN_LED2 = 26;

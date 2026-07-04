@@ -18,9 +18,9 @@ void setupNetworking();
 
 // ---------------- Display ----------------
 // For SH1106 OLED screens (fixes the 2-pixel shift/glitch line on the left side)
-U8G2_SH1106_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, PIN_OLED_SCL, PIN_OLED_SDA, u8x8_pin_none);
+U8G2_SH1106_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, PIN_OLED_SCL, PIN_OLED_SDA, U8X8_PIN_NONE);
 // For SSD1306 OLED screens (uncomment if using SSD1306)
-// U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, PIN_OLED_SCL, PIN_OLED_SDA, u8x8_pin_none);
+// U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, PIN_OLED_SCL, PIN_OLED_SDA, U8X8_PIN_NONE);
 
 // ---------------- Runtime ----------------
 Preferences prefs;

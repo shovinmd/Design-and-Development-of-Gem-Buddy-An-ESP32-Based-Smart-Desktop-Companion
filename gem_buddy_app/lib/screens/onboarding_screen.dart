@@ -31,6 +31,48 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   int _currentStep = 0; // 0: Connect to Hotspot Guide, 1: Configuration Form
   bool _isSubmitting = false;
+  bool _isVerifyingConnection = false;
+
+  Future<void> _verifyHotspotConnection() async {
+    setState(() {
+      _isVerifyingConnection = true;
+    });
+
+    final deviceNotifier = ref.read(deviceProvider.notifier);
+    final connected = await deviceNotifier.checkSetupPortalConnection();
+
+    if (mounted) {
+      setState(() {
+        _isVerifyingConnection = false;
+      });
+
+      if (connected) {
+        setState(() {
+          _currentStep = 1;
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              '⚠️ Could not reach GEM Buddy. Make sure you are connected to the "GEM Buddy" Wi-Fi hotspot.',
+            ),
+            backgroundColor: GemColors.statusWarning,
+            action: SnackBarAction(
+              label: 'BYPASS',
+              textColor: Colors.white,
+              onPressed: () {
+                deviceNotifier.setSimulationMode(true);
+                setState(() {
+                  _currentStep = 1;
+                });
+              },
+            ),
+            duration: const Duration(seconds: 7),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -186,11 +228,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _currentStep = 1;
-              });
-            },
+            onPressed: _isVerifyingConnection ? null : _verifyHotspotConnection,
             style: ElevatedButton.styleFrom(
               backgroundColor: GemColors.accentBlue,
               foregroundColor: Colors.white,
@@ -199,21 +237,30 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ),
               elevation: 4,
             ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'I AM CONNECTED',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
+            child: _isVerifyingConnection
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'I AM CONNECTED',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward_rounded, size: 20),
+                    ],
                   ),
-                ),
-                SizedBox(width: 8),
-                Icon(Icons.arrow_forward_rounded, size: 20),
-              ],
-            ),
           ),
         ),
       ],
