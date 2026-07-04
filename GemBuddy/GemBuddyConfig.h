@@ -29,7 +29,7 @@ constexpr uint32_t GEM_SETTINGS_MAGIC = 0x47454D42; // GEMB
 constexpr uint16_t GEM_SETTINGS_VERSION = 2;
 
 // ---------------- Timing ----------------
-constexpr uint32_t BOOT_WELCOME_MS = 2000;
+constexpr uint32_t BOOT_WELCOME_MS = 4000;
 constexpr uint32_t FACE_FRAME_MS_DAY = 180;
 constexpr uint32_t FACE_FRAME_MS_EVENING = 260;
 constexpr uint32_t FACE_FRAME_MS_NIGHT = 420;

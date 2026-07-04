@@ -1384,6 +1384,7 @@ void setupNetworking() {
 }
 
 void setupServer() {
+  server.enableCORS(true);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/save", HTTP_ANY, handleSave);
@@ -1445,7 +1446,7 @@ void setup() {
   if (!settings.setupComplete) {
     rt.welcomeActive = true;
     rt.welcomeStep = 0;
-    rt.welcomeUntil = millis() + 3000; // 3 seconds hello screen
+    rt.welcomeUntil = millis() + 4000; // 4 seconds hello screen
   } else {
     rt.welcomeActive = false;
     rt.welcomeStep = 0;
