@@ -1140,14 +1140,14 @@ void handleTouchInput() {
 void openSetupPortal(bool initial, uint32_t durationMs) {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
-  WiFi.softAP(initial ? "GEM Buddy" : "GEM-Config", GEM_HOTSPOT_PASSWORD);
+  WiFi.softAP("GEM Buddy", GEM_HOTSPOT_PASSWORD);
   rt.menuUntil = millis() + durationMs;
 }
 
 void startHotspotPortal(bool allowStation, bool initialSetup) {
   WiFi.mode(allowStation ? WIFI_AP_STA : WIFI_AP);
   WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
-  WiFi.softAP(initialSetup ? "GEM Buddy" : "GEM-Config", GEM_HOTSPOT_PASSWORD);
+  WiFi.softAP("GEM Buddy", GEM_HOTSPOT_PASSWORD);
 }
 
 void connectSavedWiFi() {
@@ -1308,16 +1308,19 @@ void handleSave() {
   renderScreen();
 
   String response = "<html><body>Saved to flash. Rebooting... <a href='/'>Back</a></body></html>";
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/html", response);
   scheduleRestart();
 }
 
 void handleState() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", buildStateJson());
 }
 
 void handleTimeSet() {
   setTimeFromArgs();
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -1330,6 +1333,7 @@ void handleFactoryReset() {
   rt.lastOledUpdate = 0; // Force immediate redraw
   renderScreen();
 
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", "Factory reset done. Rebooting...");
   scheduleRestart();
 }
@@ -1359,32 +1363,58 @@ void setupPins() {
 }
 
 void setupNetworking() {
+  Serial.println("Shutting down WiFi radio...");
   WiFi.mode(WIFI_OFF);
+  delay(100); // Allow RF radio to settle
 
   const bool canConnectStation = settings.wifiEnabled && settings.wifiSsid[0] != '\0';
   const bool keepHotspot = settings.hotspotEnabled || !settings.setupComplete;
 
   if (keepHotspot) {
+    Serial.println("Starting SoftAP hotspot...");
     startHotspotPortal(canConnectStation, !settings.setupComplete);
   }
 
   if (canConnectStation) {
+    Serial.println("Configuring station connection...");
     WiFi.mode(keepHotspot ? WIFI_AP_STA : WIFI_STA);
-    WiFi.begin(settings.wifiSsid, settings.wifiPass);
+    if (settings.wifiPass[0] == '\0') {
+      Serial.println("Connecting to open network: " + String(settings.wifiSsid));
+      WiFi.begin(settings.wifiSsid);
+    } else {
+      Serial.println("Connecting to secured network: " + String(settings.wifiSsid));
+      WiFi.begin(settings.wifiSsid, settings.wifiPass);
+    }
+
     uint32_t start = millis();
+    Serial.print("Connecting to Wi-Fi");
     while (WiFi.status() != WL_CONNECTED && millis() - start < 12000) {
       delay(250);
+      Serial.print(".");
     }
-    if (WiFi.status() != WL_CONNECTED && !keepHotspot) {
-      WiFi.mode(WIFI_OFF);
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("WiFi Connected! IP: " + WiFi.localIP().toString());
+    } else {
+      Serial.println("WiFi Connection Failed!");
+      if (!keepHotspot) {
+        // Fallback: Start hotspot and setup screen so user is not stranded
+        Serial.println("Starting fallback Hotspot portal (GEM Buddy)...");
+        startHotspotPortal(true, false);
+        
+        rt.welcomeActive = true;
+        rt.welcomeStep = 1;
+        rt.welcomeUntil = millis() + 600000UL; // Keep setup screen active for 10 minutes
+      }
     }
   } else {
+    Serial.println("No Station configuration. Setting Mode...");
     WiFi.mode(keepHotspot ? WIFI_AP : WIFI_OFF);
   }
 }
 
 void setupServer() {
-  server.enableCORS(true);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/save", HTTP_ANY, handleSave);
@@ -1393,6 +1423,7 @@ void setupServer() {
   
   // OTA firmware update endpoint
   server.on("/api/update", HTTP_POST, []() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Connection", "close");
     server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
     delay(1000);
@@ -1438,10 +1469,13 @@ void bootScreen(bool initial) {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("GEM Booting...");
   setupPins();
   u8g2.begin();
+  Serial.println("Display initialized");
 
   loadSettings();
+  Serial.println("Settings loaded");
   bootScreen(!settings.setupComplete);
   if (!settings.setupComplete) {
     rt.welcomeActive = true;
@@ -1454,14 +1488,19 @@ void setup() {
   }
 
   refreshSensors(true);
+  Serial.println("Sensors refreshed");
   setupNetworking();
+  Serial.println("Networking setup complete");
   setupServer();
+  Serial.println("Web server started");
 
   if (validClock() && settings.setupComplete) {
     rt.welcomeActive = false;
   }
 
+  Serial.println("Rendering first screen...");
   renderScreen();
+  Serial.println("Setup finished!");
 }
 
 void loop() {
