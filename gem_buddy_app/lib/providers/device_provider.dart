@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'timeline_provider.dart';
 
 // State model representing the ESP32 GEM configuration & real-time telemetry
@@ -204,6 +205,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     if (!isTesting) {
       _startPolling();
       _startSimulatedSensorDrift();
+      _loadSavedConnections();
     }
 
     ref.onDispose(() {
@@ -219,6 +221,28 @@ class DeviceNotifier extends Notifier<DeviceState> {
         GemAlarm(enabled: false, hour: 22, minute: 0, name: 'Sleep Wind-down'),
       ],
     );
+  }
+
+  Future<void> _loadSavedConnections() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedBrokerIp = prefs.getString('saved_broker_ip');
+      final savedDeviceIp = prefs.getString('saved_device_ip');
+      
+      if (savedBrokerIp != null || savedDeviceIp != null) {
+        state = state.copyWith(
+          brokerIpAddress: savedBrokerIp ?? state.brokerIpAddress,
+          ipAddress: savedDeviceIp ?? state.ipAddress,
+        );
+        
+        final brokerToConnect = savedBrokerIp ?? state.brokerIpAddress;
+        if (brokerToConnect.isNotEmpty) {
+          connectToBroker(brokerToConnect);
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print("Failed to load saved connections: $e");
+    }
   }
 
   void _startPolling() {
@@ -270,6 +294,9 @@ class DeviceNotifier extends Notifier<DeviceState> {
 
   void updateIpAddress(String ip) {
     state = state.copyWith(ipAddress: ip);
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString('saved_device_ip', ip);
+    });
     if (!state.isSimulated) {
       fetchDeviceState();
     }
@@ -657,6 +684,9 @@ class DeviceNotifier extends Notifier<DeviceState> {
     if (brokerIp.isEmpty) return;
     
     state = state.copyWith(brokerIpAddress: brokerIp, isBrokerConnected: false);
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString('saved_broker_ip', brokerIp);
+    });
     
     try {
       String wsUrl;

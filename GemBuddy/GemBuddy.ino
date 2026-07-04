@@ -10,6 +10,7 @@
 #include <Update.h>
 
 #include "GemBuddyConfig.h"
+#include "eyes.h"
 
 // ---------------- Forward Declarations ----------------
 void openSetupPortal(bool initial, uint32_t durationMs = 10UL * 60UL * 1000UL);
@@ -62,6 +63,15 @@ struct TouchRuntime {
 struct RuntimeState {
   bool welcomeActive = false;
   uint32_t welcomeUntil = 0;
+  int welcomeStep = 0;
+
+  // Picaio eye animation state variables
+  int picaioXp = 16;
+  int picaioMood = 0;
+  int picaioXd = 0;
+  bool isBlinking = false;
+  uint32_t nextBlinkMs = 0;
+  uint32_t blinkEndMs = 0;
 
   bool menuOpen = false;
   uint8_t menuIndex = 0;
@@ -579,6 +589,7 @@ void showInfoPage() {
 }
 
 void activateMenuItem() {
+  closeMenu(); // Close menu first so the display shows the activated feature
   switch (rt.menuIndex) {
     case 0:
       if (settings.alarmCount > 0) {
@@ -608,7 +619,6 @@ void activateMenuItem() {
       showInfoPage();
       break;
     case 5:
-      closeMenu();
       openSetupPortal(true);
       rt.faceMode = FACE_WIFI_SETUP;
       softConfirm();
@@ -618,6 +628,7 @@ void activateMenuItem() {
       setDefaultSettings(settings);
       saveSettings();
       rt.welcomeActive = true;
+      rt.welcomeStep = 0;
       rt.welcomeUntil = millis() + BOOT_WELCOME_MS;
       break;
   }
@@ -652,31 +663,36 @@ void drawBatteryBar() {
   if (fill > 0) u8g2.drawBox(x + 2, y + 2, fill, h - 4);
 }
 
-void drawFaceEyes(int cx, int cy, bool closed, int pupilX, int pupilY, bool happy) {
-  int r = 8;
-  if (closed) {
-    u8g2.drawLine(cx - r, cy, cx + r, cy);
-    return;
+void drawFaceEyes() {
+  int base_x1 = 16;
+  int base_x2 = 80;
+  int shift = (rt.picaioXp - 16) / 4; // Scale pupil movement to +/- 4 pixels
+  int x1 = base_x1 + rt.picaioXd + shift;
+  int x2 = base_x2 + rt.picaioXd + shift;
+
+  // Clamp coordinates to prevent side wrap-around glitches
+  if (x1 < 0) x1 = 0;
+  if (x1 > 48) x1 = 48;
+  if (x2 < 48) x2 = 48;
+  if (x2 > 96) x2 = 96;
+
+  // Draw the eyes centered (y = 12)
+  if (rt.isBlinking || rt.picaioMood == 2) {
+    u8g2.drawBitmap(x1, 12, 4, 32, eye0);
+    u8g2.drawBitmap(x2, 12, 4, 32, eye0);
+  } else {
+    int m = rt.picaioMood;
+    if (rt.picaioXp < 6) {
+      u8g2.drawBitmap(x1, 12, 4, 32, peyes[m][1][0]);
+      u8g2.drawBitmap(x2, 12, 4, 32, peyes[m][1][1]);
+    } else if (rt.picaioXp < 26) {
+      u8g2.drawBitmap(x1, 12, 4, 32, peyes[m][0][0]);
+      u8g2.drawBitmap(x2, 12, 4, 32, peyes[m][0][1]);
+    } else {
+      u8g2.drawBitmap(x1, 12, 4, 32, peyes[m][2][0]);
+      u8g2.drawBitmap(x2, 12, 4, 32, peyes[m][2][1]);
+    }
   }
-
-  if (happy) {
-    u8g2.drawArc(cx, cy + 2, r, 200, 340);
-    u8g2.drawArc(cx, cy + 2, r - 1, 200, 340);
-    return;
-  }
-
-  // Outer white circle
-  u8g2.drawDisc(cx, cy, r);
-  u8g2.setDrawColor(0);
-  u8g2.drawDisc(cx, cy, r - 2);
-
-  // Moving iris ring outline & black pupil
-  u8g2.setDrawColor(1);
-  u8g2.drawDisc(cx + pupilX, cy + pupilY, r - 3);
-  u8g2.setDrawColor(0);
-  u8g2.drawDisc(cx + pupilX, cy + pupilY, r - 5);
-
-  u8g2.setDrawColor(1);
 }
 
 void drawMouth(int cx, int cy, bool smile, bool tiny) {
@@ -720,31 +736,49 @@ void drawTimeOverlay() {
 void drawWelcomeScreen() {
   u8g2.clearBuffer();
   u8g2.drawRFrame(2, 2, 124, 60, 8);
-  drawCentered(18, "Hello, I am", u8g2_font_6x10_tr);
-  drawCentered(30, settings.deviceName, u8g2_font_ncenB08_tr);
-  drawCentered(44, "Welcome, I am your GEM", u8g2_font_5x7_tr);
-  drawCentered(56, "Use the app to bring me to life", u8g2_font_5x7_tr);
+  if (rt.welcomeStep == 0) {
+    drawCentered(20, "Hello! I am GEM", u8g2_font_6x10_tr);
+    drawCentered(36, "your smart companion", u8g2_font_5x7_tr);
+    drawCentered(48, "Let's bring me to life!", u8g2_font_5x7_tr);
+  } else {
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.drawStr(8, 14, "Connect to Wi-Fi:");
+    u8g2.drawStr(8, 24, "SSID: GEM Buddy");
+    u8g2.drawStr(8, 34, "Pass: 12345678");
+    u8g2.drawStr(8, 44, "Go to: 192.168.4.1");
+    u8g2.drawStr(8, 54, "Use the app to setup");
+  }
   u8g2.sendBuffer();
 }
 
 void drawMenuScreen() {
   u8g2.clearBuffer();
   u8g2.drawRFrame(2, 2, 124, 60, 8);
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(10, 12, "Gem Menu");
   drawBatteryBar();
 
-  for (uint8_t i = 0; i < MENU_ITEM_COUNT; ++i) {
-    int y = 22 + (i * 5);
-    if (y > 58) break;
-    if (i == rt.menuIndex) {
-      u8g2.drawBox(6, y - 4, 116, 6);
-      u8g2.setDrawColor(0);
-    }
-    u8g2.setFont(u8g2_font_5x7_tr);
-    u8g2.drawStr(10, y, MENU_ITEMS[i]);
-    u8g2.setDrawColor(1);
-  }
+  // Center header
+  u8g2.setFont(u8g2_font_6x10_tr);
+  u8g2.drawStr(10, 11, "GEM Menu");
+  u8g2.drawLine(2, 14, 126, 14);
+
+  // Draw rounded card frame in the center
+  u8g2.drawRFrame(16, 22, 96, 24, 4);
+
+  // Center the active menu item text inside the card
+  u8g2.setFont(u8g2_font_6x10_tr); // Use a clean font that fits inside
+  const char* activeItemText = MENU_ITEMS[rt.menuIndex];
+  int16_t itemW = u8g2.getStrWidth(activeItemText);
+  u8g2.drawStr((128 - itemW) / 2, 38, activeItemText);
+
+  // Draw left and right pointing arrows next to the card
+  // Left arrow: <
+  u8g2.drawTriangle(6, 34, 10, 30, 10, 38);
+  // Right arrow: >
+  u8g2.drawTriangle(122, 34, 118, 30, 118, 38);
+
+  // Bottom action hint
+  u8g2.setFont(u8g2_font_4x6_tr);
+  u8g2.drawStr(12, 56, "Tap: Cycle | Long: Select");
   u8g2.sendBuffer();
 }
 
@@ -794,39 +828,19 @@ void closeWiFiSetup() {
 void drawFaceScreen() {
   bool night = isNightTime();
   bool evening = isEveningTime() || rt.ambientDark;
-  bool closed = night || (rt.faceMode == FACE_PET && (millis() / 100) % 2 == 0);
-  bool happy = rt.faceMode == FACE_PET || rt.faceMode == FACE_HEART || rt.faceMode == FACE_MENU;
-  bool smile = true;
-
-  int pupilX = rt.eyeOffsetX;
-  int pupilY = rt.eyeOffsetY;
-
-  if (night) {
-    pupilX = 0;
-    pupilY = 0;
-  } else if (evening) {
-    pupilY = 1;
-  }
-
-  if (rt.faceMode == FACE_ALARM) {
-    closed = false;
-    happy = false;
-    smile = false;
-    pupilX = 0;
-    pupilY = -1;
-  }
+  bool smile = rt.faceMode != FACE_ALARM;
 
   u8g2.clearBuffer();
   u8g2.drawRFrame(2, 2, 124, 60, 8);
   drawBatteryBar();
-  u8g2.setFont(u8g2_font_5x7_tr);
-  u8g2.drawStr(8, 11, settings.userName);
-  u8g2.drawStr(82, 11, settings.deviceName);
+  u8g2.setFont(u8g2_font_4x6_tr);
+  u8g2.drawStr(8, 9, settings.userName);
+  u8g2.drawStr(72, 9, settings.deviceName);
 
-  // Draw circular eyes centered symmetrically
-  drawFaceEyes(34, 28, closed, pupilX, pupilY, happy);
-  drawFaceEyes(94, 28, closed, pupilX, pupilY, happy);
+  // Draw Picaio eyes
+  drawFaceEyes();
 
+  // Draw Mouth
   drawMouth(64, 48, smile, rt.faceMode == FACE_PET);
 
   if (rt.faceMode == FACE_PET) {
@@ -847,7 +861,7 @@ void drawFaceScreen() {
     u8g2.setFont(u8g2_font_5x7_tr);
     u8g2.drawStr(12, 57, settings.alarms[rt.alarmIndex].name);
   } else {
-    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setFont(u8g2_font_4x6_tr);
     if (night) {
       u8g2.drawStr(12, 57, "Night sleep mode");
     } else if (evening) {
@@ -858,6 +872,7 @@ void drawFaceScreen() {
   }
 
   if (settings.lampState) {
+    u8g2.setFont(u8g2_font_4x6_tr);
     u8g2.drawStr(94, 57, "Lamp");
   }
 
@@ -893,6 +908,21 @@ void renderScreen() {
   drawFaceScreen();
 }
 
+void handleBlinks() {
+  uint32_t now = millis();
+  if (rt.isBlinking) {
+    if (now >= rt.blinkEndMs) {
+      rt.isBlinking = false;
+      rt.nextBlinkMs = now + random(2500, 7000);
+    }
+  } else {
+    if (now >= rt.nextBlinkMs && rt.picaioMood != 2) {
+      rt.isBlinking = true;
+      rt.blinkEndMs = now + random(100, 200);
+    }
+  }
+}
+
 void updateFaceAnimation() {
   uint32_t now = millis();
   if (now - rt.lastFaceFrame < OLED_REFRESH_MS) return;
@@ -902,44 +932,57 @@ void updateFaceAnimation() {
     return;
   }
 
-  uint32_t framePeriod = FACE_FRAME_MS_DAY;
+  // Update Picaio mood mapping
   if (isNightTime()) {
-    framePeriod = FACE_FRAME_MS_NIGHT;
-    if (rt.faceMode != FACE_WIFI_SETUP) {
-      rt.faceMode = FACE_NIGHT;
-    }
-  } else if (isEveningTime() || rt.ambientDark) {
-    framePeriod = FACE_FRAME_MS_EVENING;
-    if (rt.faceMode != FACE_PET && rt.faceMode != FACE_HEART && rt.faceMode != FACE_ALARM && !rt.menuOpen && rt.faceMode != FACE_WIFI_SETUP) {
-      rt.faceMode = FACE_EVENING;
-    }
-  } else if (rt.faceMode != FACE_PET && rt.faceMode != FACE_HEART && rt.faceMode != FACE_ALARM && !rt.menuOpen && rt.faceMode != FACE_WIFI_SETUP) {
-    rt.faceMode = FACE_DAY;
-  }
-
-  if (rt.petActive) {
-    framePeriod = FACE_FRAME_MS_PET;
-  }
-
-  rt.facePhase = (rt.facePhase + 1) % 16;
-  rt.blinkFrame = (rt.facePhase == 6 || rt.facePhase == 12);
-
-  if (rt.facePhase < 4) {
-    rt.eyeOffsetX = 0;
-    rt.eyeOffsetY = 0;
-  } else if (rt.facePhase < 7) {
-    rt.eyeOffsetX = -2;
-    rt.eyeOffsetY = 0;
-  } else if (rt.facePhase < 10) {
-    rt.eyeOffsetX = 2;
-    rt.eyeOffsetY = 0;
+    rt.picaioMood = 2; // Sleeping / Closed
+    rt.faceMode = FACE_NIGHT;
   } else {
-    rt.eyeOffsetX = 0;
-    rt.eyeOffsetY = (rt.facePhase % 2 == 0) ? -1 : 1;
+    switch (rt.faceMode) {
+      case FACE_PET:
+        rt.picaioMood = 1; // Happy
+        break;
+      case FACE_ALARM:
+        rt.picaioMood = 3; // Angry / Alert
+        break;
+      case FACE_HEART:
+        rt.picaioMood = 1; // Happy
+        break;
+      case FACE_WIFI_SETUP:
+      case FACE_MENU:
+        rt.picaioMood = 5; // Suspicious / Wide
+        break;
+      case FACE_EVENING:
+        rt.picaioMood = 4; // Sad / Tired
+        break;
+      case FACE_DAY:
+      default:
+        rt.picaioMood = 0; // Neutral
+        break;
+    }
+  }
+
+  // Jitter pupil drift slightly to make it organic
+  int n = random(0, 10);
+  if (n < 4) rt.picaioXd--;
+  if (n > 6) rt.picaioXd++;
+  if (rt.picaioXd < -4) rt.picaioXd = -3;
+  if (rt.picaioXd > 4) rt.picaioXd = 3;
+
+  // Auto-cycle gaze direction randomly
+  static uint32_t lastGazeCycleMs = 0;
+  static uint32_t nextGazeIntervalMs = 4000;
+  if (now - lastGazeCycleMs >= nextGazeIntervalMs) {
+    lastGazeCycleMs = now;
+    nextGazeIntervalMs = random(4000, 8000);
+    int randDir = random(0, 3);
+    if (randDir == 0) rt.picaioXp = 2; // Look Left
+    else if (randDir == 1) rt.picaioXp = 16; // Center
+    else rt.picaioXp = 30; // Look Right
   }
 
   if (rt.petActive && now >= rt.petUntil) {
     rt.petActive = false;
+    rt.faceMode = FACE_DAY;
   }
 
   if (now - rt.lastAutoTimePeek >= AUTO_TIME_PEEK_MS) {
@@ -958,7 +1001,12 @@ void maybeWakeTimeDisplay() {
 
 void updateWelcomeState() {
   if (rt.welcomeActive && millis() > rt.welcomeUntil) {
-    rt.welcomeActive = false;
+    if (!settings.setupComplete && rt.welcomeStep == 0) {
+      rt.welcomeStep = 1;
+      rt.welcomeUntil = millis() + 600000UL; // Keep setup instructions screen on for 10 minutes
+    } else {
+      rt.welcomeActive = false;
+    }
   }
 }
 
@@ -1031,8 +1079,12 @@ void handleTouchInput() {
 
   if (pressed && rt.touch.pressed && !rt.touch.longHandled && now - rt.touch.pressedAt >= LONG_TOUCH_MS) {
     rt.touch.longHandled = true;
-    celebrateTouch();
-    triggerCloudEvent("long-touch");
+    if (rt.menuOpen) {
+      activateMenuItem();
+    } else {
+      celebrateTouch();
+      triggerCloudEvent("long-touch");
+    }
   }
 
   if (!pressed && rt.touch.pressed) {
@@ -1040,9 +1092,11 @@ void handleTouchInput() {
     rt.touch.pressed = false;
 
     if (rt.touch.longHandled) {
-      rt.petActive = true;
-      rt.petUntil = now + 2500;
-      rt.timeOverlayActive = false;
+      if (!rt.menuOpen) {
+        rt.petActive = true;
+        rt.petUntil = now + 2500;
+        rt.timeOverlayActive = false;
+      }
       return;
     }
 
@@ -1061,14 +1115,14 @@ void handleTouchInput() {
 void openSetupPortal(bool initial, uint32_t durationMs) {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
-  WiFi.softAP(initial ? "GEM-Setup" : "GEM-Config", GEM_HOTSPOT_PASSWORD);
+  WiFi.softAP(initial ? "GEM Buddy" : "GEM-Config", GEM_HOTSPOT_PASSWORD);
   rt.menuUntil = millis() + durationMs;
 }
 
 void startHotspotPortal(bool allowStation, bool initialSetup) {
   WiFi.mode(allowStation ? WIFI_AP_STA : WIFI_AP);
   WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
-  WiFi.softAP(initialSetup ? "GEM-Setup" : "GEM-Config", GEM_HOTSPOT_PASSWORD);
+  WiFi.softAP(initialSetup ? "GEM Buddy" : "GEM-Config", GEM_HOTSPOT_PASSWORD);
 }
 
 void connectSavedWiFi() {
@@ -1274,10 +1328,10 @@ void setupNetworking() {
   WiFi.mode(WIFI_OFF);
 
   const bool canConnectStation = settings.wifiEnabled && settings.wifiSsid[0] != '\0';
-  const bool keepHotspot = settings.hotspotEnabled;
+  const bool keepHotspot = settings.hotspotEnabled || !settings.setupComplete;
 
   if (keepHotspot) {
-    startHotspotPortal(canConnectStation, false);
+    startHotspotPortal(canConnectStation, !settings.setupComplete);
   }
 
   if (canConnectStation) {
@@ -1355,11 +1409,13 @@ void setup() {
   loadSettings();
   bootScreen(!settings.setupComplete);
   if (!settings.setupComplete) {
-    rt.welcomeUntil = millis() + BOOT_WELCOME_MS;
     rt.welcomeActive = true;
+    rt.welcomeStep = 0;
+    rt.welcomeUntil = millis() + 3000; // 3 seconds hello screen
   } else {
-    rt.welcomeUntil = 0;
     rt.welcomeActive = false;
+    rt.welcomeStep = 0;
+    rt.welcomeUntil = 0;
   }
 
   refreshSensors(true);
@@ -1403,11 +1459,8 @@ void loop() {
     rt.timeOverlayActive = false;
   }
 
-  if (rt.welcomeActive && millis() >= rt.welcomeUntil) {
-    rt.welcomeActive = false;
-  }
-
   updateFaceAnimation();
+  handleBlinks();
 
   if (millis() - rt.lastOledUpdate >= OLED_REFRESH_MS) {
     rt.lastOledUpdate = millis();
