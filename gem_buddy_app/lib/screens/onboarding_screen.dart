@@ -29,6 +29,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     {'label': 'Asia/Singapore', 'offset': 480},
   ];
 
+  int _currentStep = 0; // 0: Connect to Hotspot Guide, 1: Configuration Form
   bool _isSubmitting = false;
 
   @override
@@ -102,212 +103,359 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // App Logo
-                  Hero(
-                    tag: 'app_logo',
-                    child: Container(
-                      height: 100,
-                      width: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: GemColors.accentBlue.withValues(alpha: 0.15),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: ClipOval(
-                        child: Image.asset(
-                          'assets/logo/logo.png',
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const Icon(
-                            Icons.android_rounded,
-                            size: 60,
-                            color: GemColors.accentBlue,
-                          ),
-                        ),
-                      ),
-                    ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.0, 0.1),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
                   ),
-                  const SizedBox(height: 16),
-                  
-                  // Brand Header
-                  Text(
-                    'GEM BUDDY',
-                    style: GlassStyles.titleStyle.copyWith(
-                      fontSize: 28,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Set up your smart desk companion',
-                    textAlign: TextAlign.center,
-                    style: GlassStyles.subtitleStyle,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Main Setup Form Glass Card
-                  GlassCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Profile Settings',
-                          style: TextStyle(
-                            color: GemColors.textPrimary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        
-                        // User Name Input
-                        _buildInputField(
-                          controller: _nameController,
-                          label: 'Your Name',
-                          icon: Icons.person_rounded,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Please enter your name';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Device Nickname Input
-                        _buildInputField(
-                          controller: _nicknameController,
-                          label: 'GEM Nickname',
-                          icon: Icons.smart_toy_rounded,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Please name your device';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Timezone Dropdown Input
-                        DropdownButtonFormField<String>(
-                          value: _selectedTimezone,
-                          dropdownColor: GemColors.bgSecondary,
-                          style: const TextStyle(
-                            color: GemColors.textPrimary,
-                            fontFamily: 'monospace',
-                          ),
-                          decoration: InputDecoration(
-                            labelText: 'Timezone',
-                            labelStyle: const TextStyle(color: GemColors.textSecondary),
-                            prefixIcon: const Icon(Icons.public_rounded, color: GemColors.accentBlue),
-                            filled: true,
-                            fillColor: Colors.white.withValues(alpha: 0.04),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide(color: GemColors.accentBlue.withValues(alpha: 0.2)),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide(color: GemColors.accentBlue.withValues(alpha: 0.1)),
-                            ),
-                          ),
-                          items: _timezones.map((tz) {
-                            return DropdownMenuItem<String>(
-                              value: tz['label'],
-                              child: Text(tz['label']),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() {
-                                _selectedTimezone = val;
-                              });
-                            }
-                          },
-                        ),
-                        
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16.0),
-                          child: Divider(color: GemColors.glassBorder),
-                        ),
-
-                        const Text(
-                          'Wi-Fi Connection (Optional)',
-                          style: TextStyle(
-                            color: GemColors.textPrimary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // WiFi SSID Input
-                        _buildInputField(
-                          controller: _wifiSsidController,
-                          label: 'Wi-Fi SSID',
-                          icon: Icons.wifi_rounded,
-                        ),
-                        const SizedBox(height: 12),
-
-                        // WiFi Password Input
-                        _buildInputField(
-                          controller: _wifiPassController,
-                          label: 'Wi-Fi Password',
-                          icon: Icons.lock_outline_rounded,
-                          obscureText: true,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Connect & Save Action Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _submitSetup,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: GemColors.accentBlue,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        elevation: 4,
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              'CONNECT & START',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.0,
-                              ),
-                            ),
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
+              child: _currentStep == 0 ? _buildHotspotStep() : _buildConfigStep(),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildHotspotStep() {
+    return Column(
+      key: const ValueKey('hotspot_step'),
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(height: 10),
+        const PulsingWifiIcon(),
+        const SizedBox(height: 24),
+        
+        Text(
+          'CONNECT TO GEM',
+          style: GlassStyles.titleStyle.copyWith(
+            fontSize: 24,
+            letterSpacing: 1.5,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Connect to the companion device hotspot first',
+          textAlign: TextAlign.center,
+          style: GlassStyles.subtitleStyle,
+        ),
+        const SizedBox(height: 24),
+
+        GlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Setup Instructions',
+                style: TextStyle(
+                  color: GemColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildStepItem(
+                1,
+                'Power On GEM Buddy',
+                'Turn on your companion device and wait for the greeting screen to display instruction details.',
+              ),
+              _buildStepItem(
+                2,
+                'Open Wi-Fi Settings',
+                'Go to your phone\'s Settings > Wi-Fi and search for nearby networks.',
+              ),
+              _buildStepItem(
+                3,
+                'Connect to network',
+                'Select "GEM Buddy" and connect. No password is required by default, or enter "12345678" if prompted.',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _currentStep = 1;
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GemColors.accentBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              elevation: 4,
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'I AM CONNECTED',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                SizedBox(width: 8),
+                Icon(Icons.arrow_forward_rounded, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConfigStep() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        key: const ValueKey('config_step'),
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Header Row with Back Button
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, color: GemColors.textSecondary),
+                onPressed: () {
+                  setState(() {
+                    _currentStep = 0;
+                  });
+                },
+              ),
+              const Expanded(
+                child: Text(
+                  'DEVICE CONFIGURATION',
+                  style: TextStyle(
+                    color: GemColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Main Setup Form Glass Card
+          GlassCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Profile Settings',
+                  style: TextStyle(
+                    color: GemColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // User Name Input
+                _buildInputField(
+                  controller: _nameController,
+                  label: 'Your Name',
+                  icon: Icons.person_rounded,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+
+                // Device Nickname Input
+                _buildInputField(
+                  controller: _nicknameController,
+                  label: 'GEM Nickname',
+                  icon: Icons.smart_toy_rounded,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please name your device';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+
+                // Timezone Dropdown Input
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedTimezone,
+                  dropdownColor: GemColors.bgSecondary,
+                  style: const TextStyle(
+                    color: GemColors.textPrimary,
+                    fontFamily: 'monospace',
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Timezone',
+                    labelStyle: const TextStyle(color: GemColors.textSecondary),
+                    prefixIcon: const Icon(Icons.public_rounded, color: GemColors.accentBlue),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.04),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: GemColors.accentBlue.withValues(alpha: 0.2)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: GemColors.accentBlue.withValues(alpha: 0.1)),
+                    ),
+                  ),
+                  items: _timezones.map((tz) {
+                    return DropdownMenuItem<String>(
+                      value: tz['label'],
+                      child: Text(tz['label']),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedTimezone = val;
+                      });
+                    }
+                  },
+                ),
+                
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16.0),
+                  child: Divider(color: GemColors.glassBorder),
+                ),
+
+                const Text(
+                  'Wi-Fi Connection (Optional)',
+                  style: TextStyle(
+                    color: GemColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // WiFi SSID Input
+                _buildInputField(
+                  controller: _wifiSsidController,
+                  label: 'Wi-Fi SSID',
+                  icon: Icons.wifi_rounded,
+                ),
+                const SizedBox(height: 12),
+
+                // WiFi Password Input
+                _buildInputField(
+                  controller: _wifiPassController,
+                  label: 'Wi-Fi Password',
+                  icon: Icons.lock_outline_rounded,
+                  obscureText: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Connect & Save Action Button
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _isSubmitting ? null : _submitSetup,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: GemColors.accentBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                elevation: 4,
+              ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text(
+                      'CONNECT & START',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepItem(int number, String title, String subtitle) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: GemColors.accentBlue,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '$number',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: GemColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: GemColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -340,6 +488,66 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: GemColors.accentBlue.withValues(alpha: 0.1)),
+        ),
+      ),
+    );
+  }
+}
+
+class PulsingWifiIcon extends StatefulWidget {
+  const PulsingWifiIcon({super.key});
+
+  @override
+  State<PulsingWifiIcon> createState() => _PulsingWifiIconState();
+}
+
+class _PulsingWifiIconState extends State<PulsingWifiIcon> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0.9, end: 1.1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _animation,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: GemColors.accentBlue.withValues(alpha: 0.05),
+          border: Border.all(
+            color: GemColors.accentBlue.withValues(alpha: 0.2),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: GemColors.accentBlue.withValues(alpha: 0.15),
+              blurRadius: 30,
+              spreadRadius: 4,
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.wifi_rounded,
+          size: 64,
+          color: GemColors.accentBlue,
         ),
       ),
     );
