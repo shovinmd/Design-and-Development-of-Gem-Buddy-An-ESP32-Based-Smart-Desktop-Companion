@@ -41,7 +41,8 @@ enum FaceMode {
   FACE_HEART,
   FACE_ALARM,
   FACE_INFO,
-  FACE_WIFI_SETUP
+  FACE_WIFI_SETUP,
+  FACE_CONFIGURING
 };
 
 enum LampMode {
@@ -138,7 +139,7 @@ static const char* MENU_ITEMS[] = {
 };
 
 constexpr uint8_t MENU_ITEM_COUNT = sizeof(MENU_ITEMS) / sizeof(MENU_ITEMS[0]);
-constexpr const char* GEM_HOTSPOT_PASSWORD = "12345678";
+constexpr const char* GEM_HOTSPOT_PASSWORD = "123456789";
 
 // ---------------- Helpers ----------------
 void copyText(char* dst, size_t dstSize, const char* src) {
@@ -324,6 +325,10 @@ int readBatteryPercent() {
   float mv = readAnalogAverage(PIN_BATTERY_ADC, 8);
   float volts = (mv / 1000.0f) * BATTERY_DIVIDER_RATIO;
   rt.batteryVoltage = volts;
+
+  if (volts < 2.0f) {
+    return 100; // No battery connected, treat as USB-powered 100% to prevent deep sleep
+  }
 
   float percent = 0.0f;
   if (volts >= 4.20f) {
@@ -744,10 +749,25 @@ void drawWelcomeScreen() {
     u8g2.setFont(u8g2_font_5x7_tr);
     u8g2.drawStr(8, 14, "Connect to Wi-Fi:");
     u8g2.drawStr(8, 24, "SSID: GEM Buddy");
-    u8g2.drawStr(8, 34, "Pass: 12345678");
+    u8g2.drawStr(8, 34, "Pass: 123456789");
     u8g2.drawStr(8, 44, "Go to: 192.168.4.1");
     u8g2.drawStr(8, 54, "Use the app to setup");
   }
+  u8g2.sendBuffer();
+}
+
+void drawConfiguringScreen() {
+  u8g2.clearBuffer();
+  u8g2.drawRFrame(2, 2, 124, 60, 8);
+  drawCentered(18, "Configuring GEM", u8g2_font_6x10_tr);
+  drawCentered(32, "Saving settings to flash", u8g2_font_5x7_tr);
+  
+  // Draw an animated loading bar based on millis()
+  int progress = (millis() / 20) % 100;
+  int w = map(progress, 0, 99, 0, 80);
+  u8g2.drawFrame(24, 44, 80, 8);
+  u8g2.drawBox(26, 46, w, 4);
+  
   u8g2.sendBuffer();
 }
 
@@ -880,6 +900,11 @@ void drawFaceScreen() {
 }
 
 void renderScreen() {
+  if (rt.faceMode == FACE_CONFIGURING) {
+    drawConfiguringScreen();
+    return;
+  }
+
   if (rt.welcomeActive) {
     drawWelcomeScreen();
     return;
@@ -928,7 +953,7 @@ void updateFaceAnimation() {
   if (now - rt.lastFaceFrame < OLED_REFRESH_MS) return;
   rt.lastFaceFrame = now;
 
-  if (rt.welcomeActive) {
+  if (rt.welcomeActive || rt.faceMode == FACE_CONFIGURING) {
     return;
   }
 
@@ -1277,6 +1302,11 @@ void handleSave() {
     setTimeFromArgs();
   }
 
+  rt.faceMode = FACE_CONFIGURING;
+  rt.welcomeActive = false;
+  rt.lastOledUpdate = 0; // Force immediate redraw
+  renderScreen();
+
   String response = "<html><body>Saved to flash. Rebooting... <a href='/'>Back</a></body></html>";
   server.send(200, "text/html", response);
   scheduleRestart();
@@ -1294,8 +1324,12 @@ void handleTimeSet() {
 void handleFactoryReset() {
   setDefaultSettings(settings);
   saveSettings();
-  rt.welcomeActive = true;
-  rt.welcomeUntil = millis() + BOOT_WELCOME_MS;
+  
+  rt.faceMode = FACE_CONFIGURING;
+  rt.welcomeActive = false;
+  rt.lastOledUpdate = 0; // Force immediate redraw
+  renderScreen();
+
   server.send(200, "text/plain", "Factory reset done. Rebooting...");
   scheduleRestart();
 }
@@ -1422,7 +1456,7 @@ void setup() {
   setupNetworking();
   setupServer();
 
-  if (validClock()) {
+  if (validClock() && settings.setupComplete) {
     rt.welcomeActive = false;
   }
 

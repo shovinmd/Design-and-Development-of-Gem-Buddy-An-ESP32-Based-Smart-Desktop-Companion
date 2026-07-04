@@ -217,7 +217,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               _buildStepItem(
                 3,
                 'Connect to network',
-                'Select "GEM Buddy" and connect. No password is required by default, or enter "12345678" if prompted.',
+                'Select "GEM Buddy" and connect. Enter "123456789" when prompted.',
               ),
             ],
           ),
