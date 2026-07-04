@@ -75,7 +75,7 @@ class DeviceState {
     this.bpm = 0,
     this.activeAlarmIndex = 255,
     this.lastNotificationMessage,
-    this.brokerIpAddress = '',
+    this.brokerIpAddress = 'design-and-development-of-gem-buddy-an.onrender.com',
     this.isBrokerConnected = false,
     this.securityLogs = const [],
   });

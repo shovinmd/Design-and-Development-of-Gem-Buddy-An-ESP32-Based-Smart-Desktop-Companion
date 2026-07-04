@@ -13,7 +13,16 @@ class SecurityScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final deviceState = ref.watch(deviceProvider);
     final deviceNotifier = ref.read(deviceProvider.notifier);
-    final webhookController = TextEditingController(text: 'http://my-cloud-api.com/alert');
+    final defaultWebhookUrl = deviceState.brokerIpAddress.isNotEmpty
+        ? (deviceState.brokerIpAddress.contains('onrender.com') || deviceState.brokerIpAddress.contains('herokuapp.com') || deviceState.brokerIpAddress.startsWith('http'))
+            ? (deviceState.brokerIpAddress.startsWith('http') 
+                ? (deviceState.brokerIpAddress.endsWith('/') 
+                    ? '${deviceState.brokerIpAddress}webhook' 
+                    : '${deviceState.brokerIpAddress}/webhook')
+                : 'https://${deviceState.brokerIpAddress}/webhook')
+            : 'http://${deviceState.brokerIpAddress}:3000/webhook'
+        : 'https://design-and-development-of-gem-buddy-an.onrender.com/webhook';
+    final webhookController = TextEditingController(text: defaultWebhookUrl);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
