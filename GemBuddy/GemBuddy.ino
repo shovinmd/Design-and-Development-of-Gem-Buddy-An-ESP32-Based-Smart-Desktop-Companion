@@ -109,6 +109,7 @@ struct RuntimeState {
   bool fingerPresent = false;
   uint32_t fingerDetectedAt = 0;
   bool pulseCalibrated = false;
+  uint32_t lastAppRequestAt = 0;
 
   bool lampNotificationFlash = false;
   uint32_t lampNotificationUntil = 0;
@@ -867,6 +868,16 @@ void drawTimeOverlay() {
   u8g2.clearBuffer();
   u8g2.drawRFrame(2, 2, 124, 60, 8);
   drawBatteryBar();
+  
+  // Show premium "LIVE" status badge if app is actively connected (polling within last 10 seconds)
+  if (rt.lastAppRequestAt > 0 && millis() - rt.lastAppRequestAt < 10000) {
+    u8g2.setFont(u8g2_font_4x6_tr);
+    u8g2.drawRBox(96, 6, 22, 9, 2);
+    u8g2.setDrawColor(0);
+    u8g2.drawStr(99, 13, "LIVE");
+    u8g2.setDrawColor(1);
+  }
+
   drawCentered(24, timeBuf, u8g2_font_7x14_tf);
   drawCentered(40, dateBuf, u8g2_font_6x10_tf);
   u8g2.setFont(u8g2_font_5x7_tr);
@@ -1736,6 +1747,7 @@ void applySettingsFromRequest() {
 }
 
 void handleSave() {
+  rt.lastAppRequestAt = millis();
   applySettingsFromRequest();
   if (server.hasArg("epoch")) {
     setTimeFromArgs();
@@ -1762,11 +1774,13 @@ void handleSave() {
 }
 
 void handleState() {
+  rt.lastAppRequestAt = millis();
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", buildStateJson());
 }
 
 void handleTimeSet() {
+  rt.lastAppRequestAt = millis();
   setTimeFromArgs();
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", "{\"ok\":true}");
@@ -1787,6 +1801,7 @@ void handleFactoryReset() {
 }
 
 void handleHeartApi() {
+  rt.lastAppRequestAt = millis();
   server.sendHeader("Access-Control-Allow-Origin", "*");
   if (server.hasArg("action")) {
     String action = server.arg("action");
