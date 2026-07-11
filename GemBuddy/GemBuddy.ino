@@ -107,6 +107,8 @@ struct RuntimeState {
   uint16_t bpm = 0;
   uint32_t lastPulseSampleAt = 0;
   bool fingerPresent = false;
+  uint32_t fingerDetectedAt = 0;
+  bool pulseCalibrated = false;
 
   bool lampNotificationFlash = false;
   uint32_t lampNotificationUntil = 0;
@@ -659,18 +661,33 @@ void updateHeartMode() {
   // Readings close to 0 or 4095 represent unplugged/floating or saturated/removed sensor.
   bool fingerPresent = (raw > 250 && raw < 3900);
   
+  bool oldFinger = rt.fingerPresent;
   rt.fingerPresent = fingerPresent;
+
+  if (!oldFinger && fingerPresent) {
+    rt.fingerDetectedAt = now;
+    rt.pulseCalibrated = false;
+    rt.pulseBaseline = raw;
+  }
 
   if (!fingerPresent) {
     rt.bpm = 0;
     rt.pulseAbove = false;
     setAllLeds(0);
     rt.pulseBaseline = 0.0f; // reset baseline
+    rt.fingerDetectedAt = 0;
+    rt.pulseCalibrated = false;
     return;
   }
 
-  if (rt.pulseBaseline <= 1.0f) {
-    rt.pulseBaseline = raw;
+  if (!rt.pulseCalibrated) {
+    // Stabilize the baseline faster during the calibration phase (10% weight)
+    rt.pulseBaseline = rt.pulseBaseline * 0.90f + raw * 0.10f;
+    if (now - rt.fingerDetectedAt >= 2500) {
+      rt.pulseCalibrated = true;
+      rt.lastBeatMs = now;
+    }
+    return;
   }
 
   // Proven signal processing logic from Pulse_Test.ino
@@ -1035,6 +1052,9 @@ void drawFaceScreen() {
     if (!rt.fingerPresent) {
       u8g2.setFont(u8g2_font_4x6_tr);
       u8g2.drawStr(74, 58, "Place Finger...");
+    } else if (!rt.pulseCalibrated) {
+      u8g2.setFont(u8g2_font_4x6_tr);
+      u8g2.drawStr(74, 58, "Calibrating...");
     } else {
       u8g2.setFont(u8g2_font_4x6_tr);
       u8g2.drawStr(74, 58, "Scanning...");
@@ -1084,11 +1104,11 @@ void drawFaceScreen() {
     
     char msg[32] = "";
     if (rt.petActive) {
-      snprintf(msg, sizeof(msg), "Hello %s!", settings.deviceName);
+      snprintf(msg, sizeof(msg), "Hello %s!", settings.userName);
     } else {
       switch (rt.greetingIndex) {
         case 0:
-          snprintf(msg, sizeof(msg), "Hello %s!", settings.deviceName);
+          snprintf(msg, sizeof(msg), "Hello %s!", settings.userName);
           break;
         case 1:
           strcpy(msg, "How are you?");
