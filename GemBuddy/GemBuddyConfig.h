@@ -7,7 +7,7 @@
 constexpr uint8_t PIN_OLED_SDA = 21;
 constexpr uint8_t PIN_OLED_SCL = 22;
 // Touch sensor input
-constexpr uint8_t PIN_TOUCH = 4;   // Boot strap pin, keep idle LOW at reset.
+constexpr uint8_t PIN_TOUCH = 18;   // Boot strap pin, keep idle LOW at reset.
 // ADC1 inputs so Wi-Fi can stay compatible
 constexpr uint8_t PIN_LDR_ADC = 35;
 constexpr uint8_t PIN_BATTERY_ADC = 34;
@@ -26,7 +26,7 @@ constexpr uint8_t PIN_BUZZER = 33;
 constexpr const char* GEM_DEVICE_PREFIX = "GEM";
 constexpr const char* GEM_PREF_NAMESPACE = "gembuddy";
 constexpr uint32_t GEM_SETTINGS_MAGIC = 0x47454D42; // GEMB
-constexpr uint16_t GEM_SETTINGS_VERSION = 2;
+constexpr uint16_t GEM_SETTINGS_VERSION = 3;
 
 // ---------------- Timing ----------------
 constexpr uint32_t BOOT_WELCOME_MS = 4000;
@@ -93,6 +93,6 @@ struct GemSettings {
   uint8_t lampBrightness = 140;
   uint8_t ledAutoOffMinutes = 10;
 
-  uint8_t alarmCount = 2;
-  GemAlarm alarms[3];
+  uint8_t alarmCount = 3;
+  GemAlarm alarms[6];
 };

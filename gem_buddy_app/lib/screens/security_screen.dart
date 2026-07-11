@@ -13,16 +13,6 @@ class SecurityScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final deviceState = ref.watch(deviceProvider);
     final deviceNotifier = ref.read(deviceProvider.notifier);
-    final defaultWebhookUrl = deviceState.brokerIpAddress.isNotEmpty
-        ? (deviceState.brokerIpAddress.contains('onrender.com') || deviceState.brokerIpAddress.contains('herokuapp.com') || deviceState.brokerIpAddress.startsWith('http'))
-            ? (deviceState.brokerIpAddress.startsWith('http') 
-                ? (deviceState.brokerIpAddress.endsWith('/') 
-                    ? '${deviceState.brokerIpAddress}webhook' 
-                    : '${deviceState.brokerIpAddress}/webhook')
-                : 'https://${deviceState.brokerIpAddress}/webhook')
-            : 'http://${deviceState.brokerIpAddress}:3000/webhook'
-        : 'https://design-and-development-of-gem-buddy-an.onrender.com/webhook';
-    final webhookController = TextEditingController(text: defaultWebhookUrl);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -191,77 +181,6 @@ class SecurityScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // 3. CLOUD ALERTS & WEBHOOK CARD
-              FadeSlideTransition(
-                delay: const Duration(milliseconds: 300),
-                child: GlassCard(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.cloud_queue_rounded, color: GemColors.accentBlue, size: 22),
-                          SizedBox(width: 10),
-                          Text(
-                            'Cloud API Dispatcher',
-                            style: TextStyle(color: GemColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'SSID endpoint where the device will push HTTP POST notifications when alarm triggers are fired. Useful for smart home integrations.',
-                        style: TextStyle(color: GemColors.textSecondary, fontSize: 12, height: 1.3),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: webhookController,
-                        style: const TextStyle(color: GemColors.textPrimary, fontSize: 14),
-                        decoration: InputDecoration(
-                          labelText: 'Webhook URL',
-                          labelStyle: const TextStyle(color: GemColors.textSecondary, fontSize: 12),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: GemColors.textSecondary.withValues(alpha: 0.2)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: GemColors.accentBlue),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          prefixIcon: const Icon(Icons.link_rounded, color: GemColors.textSecondary, size: 18),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 46,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black.withValues(alpha: 0.04),
-                            foregroundColor: GemColors.textPrimary,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            side: BorderSide(color: GemColors.textSecondary.withValues(alpha: 0.2)),
-                          ),
-                          child: const Text('Save Dispatcher Webhook', style: TextStyle(fontWeight: FontWeight.bold)),
-                          onPressed: () {
-                            deviceNotifier.saveSettings();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Webhook configuration updated locally.'),
-                                backgroundColor: GemColors.bgSecondary,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
               const SizedBox(height: 20),

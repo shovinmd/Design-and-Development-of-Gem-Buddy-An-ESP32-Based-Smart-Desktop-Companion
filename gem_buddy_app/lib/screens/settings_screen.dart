@@ -289,26 +289,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               decoration: _inputDecoration('Broker IP/Host', Icons.dns_rounded),
                             ),
                           ),
-                          if (!deviceState.isBrokerConnected)
-                            const SizedBox(width: 12),
-                          if (!deviceState.isBrokerConnected)
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.black.withValues(alpha: 0.03),
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  side: const BorderSide(color: GemColors.accentBlue, width: 1),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black.withValues(alpha: 0.03),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                side: BorderSide(
+                                  color: deviceState.isBrokerConnected ? GemColors.statusActive : GemColors.accentBlue,
+                                  width: 1,
                                 ),
                               ),
-                              onPressed: () {
-                                final host = _brokerController.text.trim();
-                                if (host.isNotEmpty) {
-                                  deviceNotifier.connectToBroker(host);
-                                }
-                              },
-                              child: const Text('Connect', style: TextStyle(color: GemColors.accentBlue, fontSize: 12)),
                             ),
+                            onPressed: () {
+                              final host = _brokerController.text.trim();
+                              if (host.isNotEmpty) {
+                                deviceNotifier.connectToBroker(host);
+                              }
+                            },
+                            child: Text(
+                              deviceState.isBrokerConnected ? 'Connected' : 'Connect',
+                              style: TextStyle(
+                                color: deviceState.isBrokerConnected ? GemColors.statusActive : GemColors.accentBlue,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ],

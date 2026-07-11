@@ -8,6 +8,7 @@
 #include <cstring>
 #include <esp_sleep.h>
 #include <Update.h>
+#include <ESPmDNS.h>
 
 #include "GemBuddyConfig.h"
 #include "eyes.h"
@@ -29,6 +30,8 @@ WebServer server(80);
 GemSettings settings;
 bool restartPending = false;
 uint32_t restartAtMs = 0;
+bool networkingPending = false;
+uint32_t networkingAtMs = 0;
 
 enum FaceMode {
   FACE_DAY,
@@ -81,6 +84,11 @@ struct RuntimeState {
   bool petActive = false;
   uint32_t petUntil = 0;
 
+  uint32_t lastGreetingAt = 0;
+  bool greetingBubbleActive = false;
+  uint32_t greetingBubbleUntil = 0;
+  uint8_t greetingIndex = 0;
+
   bool timeOverlayActive = false;
   uint32_t timeOverlayUntil = 0;
   uint32_t lastAutoTimePeek = 0;
@@ -98,6 +106,7 @@ struct RuntimeState {
   uint32_t lastBeatMs = 0;
   uint16_t bpm = 0;
   uint32_t lastPulseSampleAt = 0;
+  bool fingerPresent = false;
 
   bool lampNotificationFlash = false;
   uint32_t lampNotificationUntil = 0;
@@ -109,6 +118,8 @@ struct RuntimeState {
   uint32_t lastLdrRead = 0;
   uint32_t lastAlarmCheck = 0;
   uint32_t lastCloudEvent = 0;
+  bool hotspotActiveState = true;
+  uint32_t hotspotStateTimer = 0;
 
   int batteryPercent = 100;
   float batteryVoltage = 4.2f;
@@ -172,6 +183,11 @@ void scheduleRestart(uint32_t delayMs = 1200) {
   restartAtMs = millis() + delayMs;
 }
 
+void scheduleNetworking() {
+  networkingPending = true;
+  networkingAtMs = millis() + 500;
+}
+
 void loadSettings() {
   setDefaultSettings(settings);
 
@@ -179,11 +195,20 @@ void loadSettings() {
   size_t got = prefs.getBytes("settings", &settings, sizeof(settings));
   prefs.end();
 
+  Serial.printf("loadSettings: Read %d bytes from Preferences (expected %d)\n", got, sizeof(settings));
+  if (got > 0) {
+    Serial.printf("loadSettings: magic = 0x%08X (expected 0x%08X), version = %d (expected %d)\n", 
+                  settings.magic, GEM_SETTINGS_MAGIC, settings.version, GEM_SETTINGS_VERSION);
+  }
+
   if (got != sizeof(settings) ||
       settings.magic != GEM_SETTINGS_MAGIC ||
       settings.version != GEM_SETTINGS_VERSION) {
+    Serial.println("loadSettings: Settings invalid or missing, resetting to defaults...");
     setDefaultSettings(settings);
     saveSettings();
+  } else {
+    Serial.println("loadSettings: Settings loaded successfully!");
   }
 }
 
@@ -312,6 +337,45 @@ bool isEveningTime() {
   return (tmv.tm_hour >= 18 && tmv.tm_hour < 22);
 }
 
+// Auto-lamp schedule:
+//   7 PM (19:00) → lamp ON  (warm evening light)
+//   5 AM (05:00) → lamp OFF (dawn, sleep mode ends)
+void checkAutoLamp() {
+  if (!validClock() || rt.batteryCritical) return;
+
+  time_t utc   = time(nullptr);
+  time_t local = utc + (settings.timezoneOffsetMinutes * 60);
+  struct tm tmv;
+  gmtime_r(&local, &tmv);
+  uint32_t minuteKey = (uint32_t)(local / 60);
+
+  static uint32_t lastLampOnMinute  = 0;
+  static uint32_t lastLampOffMinute = 0;
+
+  // --- 7 PM auto-ON ---
+  if (tmv.tm_hour == 19 && tmv.tm_min == 0) {
+    if (lastLampOnMinute != minuteKey) {
+      lastLampOnMinute = minuteKey;
+      if (!settings.lampState) {
+        settings.lampState = true;
+        if (settings.lampMode == 0) settings.lampMode = LAMP_STATIC;
+        saveSettings();
+      }
+    }
+  }
+
+  // --- 5 AM auto-OFF ---
+  if (tmv.tm_hour == 5 && tmv.tm_min == 0) {
+    if (lastLampOffMinute != minuteKey) {
+      lastLampOffMinute = minuteKey;
+      if (settings.lampState) {
+        settings.lampState = false;
+        saveSettings();
+      }
+    }
+  }
+}
+
 uint16_t readAnalogAverage(uint8_t pin, uint8_t samples) {
   uint32_t total = 0;
   for (uint8_t i = 0; i < samples; ++i) {
@@ -387,6 +451,11 @@ void refreshSensors(bool force = false) {
 }
 
 void applyPowerPolicy() {
+  if (rt.heartModeActive) {
+    // Let updateHeartMode manage the LEDs during active pulse scan
+    return;
+  }
+
   uint8_t contrast = OLED_CONTRAST_DAY;
   if (isNightTime() || (rt.ambientDark && !validClock())) {
     contrast = OLED_CONTRAST_NIGHT;
@@ -431,6 +500,15 @@ void applyPowerPolicy() {
   }
 }
 
+void saveLastKnownTime() {
+  time_t now = time(nullptr);
+  if (now > 1700000000) { // Only save valid time
+    prefs.begin(GEM_PREF_NAMESPACE, false);
+    prefs.putUInt("lastTime", (uint32_t)now);
+    prefs.end();
+  }
+}
+
 void setTimeFromEpoch(time_t epochUtc) {
   struct timeval tv;
   tv.tv_sec = epochUtc;
@@ -443,6 +521,7 @@ void setTimeFromArgs() {
   time_t epoch = (time_t)server.arg("epoch").toInt();
   if (epoch > 1700000000) {
     setTimeFromEpoch(epoch);
+    saveLastKnownTime();
   }
   if (server.hasArg("tz_offset_min")) {
     settings.timezoneOffsetMinutes = server.arg("tz_offset_min").toInt();
@@ -456,7 +535,7 @@ void triggerAlarm(uint8_t idx) {
   if (idx >= settings.alarmCount) return;
 
   rt.alarmActive = true;
-  rt.alarmUntil = millis() + 15000;
+  rt.alarmUntil = millis() + 60000UL; // Rings for 60 seconds (full minute)
   rt.alarmIndex = idx;
   rt.alarmToneStep = 0;
   rt.alarmToneStepAt = 0;
@@ -467,7 +546,7 @@ void triggerAlarm(uint8_t idx) {
   settings.lampState = true;
   settings.lampMode = LAMP_BREATHING;
   rt.lampNotificationFlash = true;
-  rt.lampNotificationUntil = millis() + 15000;
+  rt.lampNotificationUntil = millis() + 60000UL;
   triggerCloudEvent("alarm");
 }
 
@@ -482,10 +561,10 @@ void checkAlarms() {
   gmtime_r(&local, &tmv);
   uint32_t minuteKey = (uint32_t)(local / 60);
 
-  for (uint8_t i = 0; i < settings.alarmCount && i < 3; ++i) {
+  for (uint8_t i = 0; i < settings.alarmCount && i < 6; ++i) {
     if (!settings.alarms[i].enabled) continue;
     if (tmv.tm_hour == settings.alarms[i].hour && tmv.tm_min == settings.alarms[i].minute) {
-      static uint32_t lastMinuteKey[3] = {0, 0, 0};
+      static uint32_t lastMinuteKey[6] = {0, 0, 0, 0, 0, 0};
       if (lastMinuteKey[i] != minuteKey) {
         lastMinuteKey[i] = minuteKey;
         triggerAlarm(i);
@@ -505,14 +584,36 @@ void updateAlarmRuntime() {
   }
 
   if (now >= rt.alarmToneStepAt) {
-    static const uint16_t notes[] = { 784, 988, 1175, 988, 784, 0 };
-    uint16_t note = notes[rt.alarmToneStep % (sizeof(notes) / sizeof(notes[0]))];
+    uint8_t hr = 7;
+    if (rt.alarmIndex < 6) {
+      hr = settings.alarms[rt.alarmIndex].hour;
+    }
+
+    uint16_t note = 0;
+    if (hr >= 5 && hr < 12) {
+      // Morning (Wake Up): Cheerful rising sunrise arpeggio
+      static const uint16_t morningNotes[] = { 523, 587, 659, 698, 784, 880, 988, 1047, 988, 880, 784, 698, 659, 587, 523, 0 };
+      note = morningNotes[rt.alarmToneStep % 16];
+    } else if (hr >= 12 && hr < 17) {
+      // Afternoon Alert: Bouncy, energetic chime
+      static const uint16_t afternoonNotes[] = { 880, 0, 880, 0, 988, 0, 988, 0, 1175, 0, 1318, 0, 1175, 988, 880, 0 };
+      note = afternoonNotes[rt.alarmToneStep % 16];
+    } else if (hr >= 17 && hr < 21) {
+      // Evening Alert: Warm, comforting harmonic chime
+      static const uint16_t eveningNotes[] = { 440, 554, 659, 880, 659, 554, 440, 0, 494, 622, 740, 988, 740, 622, 494, 0 };
+      note = eveningNotes[rt.alarmToneStep % 16];
+    } else {
+      // Night Alert: Soft, slow, low-pitch calming lullaby
+      static const uint16_t nightNotes[] = { 349, 0, 440, 0, 523, 0, 440, 0, 392, 0, 494, 0, 587, 0, 494, 0 };
+      note = nightNotes[rt.alarmToneStep % 16];
+    }
+
     rt.alarmToneStep++;
-    rt.alarmToneStepAt = now + 240;
+    rt.alarmToneStepAt = now + 220;
     if (note == 0) {
       noTone(PIN_BUZZER);
     } else {
-      tone(PIN_BUZZER, note, 180);
+      tone(PIN_BUZZER, note, 160);
     }
   }
 }
@@ -525,13 +626,16 @@ void startHeartMode() {
   rt.lastBeatMs = 0;
   rt.bpm = 0;
   rt.lastPulseSampleAt = 0;
+  rt.fingerPresent = false;
   digitalWrite(PIN_PULSE_POWER, HIGH);
   rt.faceMode = FACE_HEART;
 }
 
 void stopHeartMode() {
   rt.heartModeActive = false;
+  rt.fingerPresent = false;
   digitalWrite(PIN_PULSE_POWER, LOW);
+  setAllLeds(0); // Reset all LEDs when heartbeat scanning stops
   if (rt.faceMode == FACE_HEART) {
     rt.faceMode = FACE_DAY;
   }
@@ -550,14 +654,36 @@ void updateHeartMode() {
   rt.lastPulseSampleAt = now;
 
   int raw = analogRead(PIN_PULSE_ADC);
+  
+  // Finger presence check: typically, reading should be within this active range when a finger is placed.
+  // Readings close to 0 or 4095 represent unplugged/floating or saturated/removed sensor.
+  bool fingerPresent = (raw > 250 && raw < 3900);
+  
+  rt.fingerPresent = fingerPresent;
+
+  if (!fingerPresent) {
+    rt.bpm = 0;
+    rt.pulseAbove = false;
+    setAllLeds(0);
+    rt.pulseBaseline = 0.0f; // reset baseline
+    return;
+  }
+
   if (rt.pulseBaseline <= 1.0f) {
     rt.pulseBaseline = raw;
   }
 
-  rt.pulseBaseline = rt.pulseBaseline * 0.96f + raw * 0.04f;
-  float threshold = rt.pulseBaseline * 1.06f;
+  // Proven signal processing logic from Pulse_Test.ino
+  rt.pulseBaseline = rt.pulseBaseline * 0.98f + raw * 0.02f;
+  float threshold = rt.pulseBaseline + 25.0f; // absolute offset for high-sensitivity pulse tracking
 
-  if (!rt.pulseAbove && raw > threshold && now - rt.lastBeatMs > 300) {
+  // If no beat detected for 3.5 seconds, reset BPM to 0 (flat/invalid signal)
+  if (rt.lastBeatMs > 0 && (now - rt.lastBeatMs > 3500)) {
+    rt.bpm = 0;
+  }
+
+  // Trigger beat on rising edge above threshold (with 300ms lockout)
+  if (!rt.pulseAbove && raw > threshold && (rt.lastBeatMs == 0 || now - rt.lastBeatMs > 300)) {
     rt.pulseAbove = true;
     if (rt.lastBeatMs > 0) {
       uint32_t interval = now - rt.lastBeatMs;
@@ -566,13 +692,16 @@ void updateHeartMode() {
       }
     }
     rt.lastBeatMs = now;
-    applyLed(PIN_LED4, 255);
+    
+    // Light sync and buzzer beep sound on beat
+    setAllLeds(255);
     tone(PIN_BUZZER, 1600, 40);
   }
 
+  // Reset trigger after signal falls below baseline
   if (rt.pulseAbove && raw < rt.pulseBaseline) {
     rt.pulseAbove = false;
-    applyLed(PIN_LED4, 0);
+    setAllLeds(0);
   }
 }
 
@@ -610,15 +739,21 @@ void activateMenuItem() {
       saveSettings();
       break;
     case 2:
-      startHeartMode();
+      if (rt.heartModeActive) {
+        stopHeartMode();
+      } else {
+        startHeartMode();
+      }
       break;
     case 3:
       settings.monitoringEnabled = !settings.monitoringEnabled;
-      saveSettings();
       if (settings.monitoringEnabled) {
+        settings.wifiEnabled = true;
+        setupNetworking(); // Auto connect WiFi on Guard Mode activation
         rt.lampNotificationFlash = true;
         rt.lampNotificationUntil = millis() + 2500;
       }
+      saveSettings();
       break;
     case 4:
       showInfoPage();
@@ -652,20 +787,7 @@ void drawCentered(int y, const char* text, const uint8_t* font) {
 }
 
 void drawBatteryBar() {
-  int percent = rt.batteryPercent;
-  if (percent < 0) percent = 0;
-  if (percent > 100) percent = 100;
-
-  char text[8];
-  snprintf(text, sizeof(text), "%d%%", percent);
-  u8g2.setFont(u8g2_font_4x6_tr);
-  u8g2.drawStr(92, 8, text);
-
-  int x = 110, y = 2, w = 14, h = 8;
-  u8g2.drawFrame(x, y, w, h);
-  u8g2.drawBox(x + w, y + 2, 2, 4);
-  int fill = map(percent, 0, 100, 0, w - 4);
-  if (fill > 0) u8g2.drawBox(x + 2, y + 2, fill, h - 4);
+  // Battery display disabled
 }
 
 void drawFaceEyes() {
@@ -728,12 +850,9 @@ void drawTimeOverlay() {
   u8g2.clearBuffer();
   u8g2.drawRFrame(2, 2, 124, 60, 8);
   drawBatteryBar();
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(10, 14, settings.deviceName);
-  u8g2.setFont(u8g2_font_ncenB08_tr);
-  u8g2.drawStr(30, 34, timeBuf);
+  drawCentered(24, timeBuf, u8g2_font_7x14_tf);
+  drawCentered(40, dateBuf, u8g2_font_6x10_tf);
   u8g2.setFont(u8g2_font_5x7_tr);
-  u8g2.drawStr(26, 48, dateBuf);
   u8g2.drawStr(12, 58, settings.userName);
   u8g2.sendBuffer();
 }
@@ -745,13 +864,23 @@ void drawWelcomeScreen() {
     drawCentered(20, "Hello! I am GEM", u8g2_font_6x10_tr);
     drawCentered(36, "your smart companion", u8g2_font_5x7_tr);
     drawCentered(48, "Let's bring me to life!", u8g2_font_5x7_tr);
-  } else {
+  } else if (rt.welcomeStep == 1) {
     u8g2.setFont(u8g2_font_5x7_tr);
     u8g2.drawStr(8, 14, "Connect to Wi-Fi:");
     u8g2.drawStr(8, 24, "SSID: GEM Buddy");
     u8g2.drawStr(8, 34, "Pass: 123456789");
     u8g2.drawStr(8, 44, "Go to: 192.168.4.1");
     u8g2.drawStr(8, 54, "Use the app to setup");
+  } else if (rt.welcomeStep == 2) {
+    char welcomeLine[40];
+    snprintf(welcomeLine, sizeof(welcomeLine), "Hello, %s!", settings.userName);
+    drawCentered(20, welcomeLine, u8g2_font_6x10_tr);
+    
+    char nameLine[40];
+    snprintf(nameLine, sizeof(nameLine), "I am %s", settings.deviceName);
+    drawCentered(36, nameLine, u8g2_font_5x7_tr);
+    
+    drawCentered(48, "your smart companion", u8g2_font_5x7_tr);
   }
   u8g2.sendBuffer();
 }
@@ -773,32 +902,31 @@ void drawConfiguringScreen() {
 
 void drawMenuScreen() {
   u8g2.clearBuffer();
-  u8g2.drawRFrame(2, 2, 124, 60, 8);
-  drawBatteryBar();
 
   // Center header
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(10, 11, "GEM Menu");
+  u8g2.setFont(u8g2_font_6x10_tf);
+  int16_t headerW = u8g2.getStrWidth("GEM Menu");
+  u8g2.drawStr((128 - headerW) / 2, 11, "GEM Menu");
   u8g2.drawLine(2, 14, 126, 14);
 
   // Draw rounded card frame in the center
-  u8g2.drawRFrame(16, 22, 96, 24, 4);
+  u8g2.drawRFrame(16, 24, 96, 24, 4);
 
   // Center the active menu item text inside the card
-  u8g2.setFont(u8g2_font_6x10_tr); // Use a clean font that fits inside
+  u8g2.setFont(u8g2_font_7x14_tf); // Premium larger font
   const char* activeItemText = MENU_ITEMS[rt.menuIndex];
+  if (rt.menuIndex == 2 && rt.heartModeActive) {
+    activeItemText = "Stop Heart Scan";
+  }
   int16_t itemW = u8g2.getStrWidth(activeItemText);
-  u8g2.drawStr((128 - itemW) / 2, 38, activeItemText);
+  u8g2.drawStr((128 - itemW) / 2, 40, activeItemText);
 
   // Draw left and right pointing arrows next to the card
   // Left arrow: <
-  u8g2.drawTriangle(6, 34, 10, 30, 10, 38);
+  u8g2.drawTriangle(6, 36, 10, 32, 10, 40);
   // Right arrow: >
-  u8g2.drawTriangle(122, 34, 118, 30, 118, 38);
+  u8g2.drawTriangle(122, 36, 118, 32, 118, 40);
 
-  // Bottom action hint
-  u8g2.setFont(u8g2_font_4x6_tr);
-  u8g2.drawStr(12, 56, "Tap: Cycle | Long: Select");
   u8g2.sendBuffer();
 }
 
@@ -832,8 +960,8 @@ void drawWiFiSetupScreen() {
   u8g2.setFont(u8g2_font_6x10_tr);
   u8g2.drawStr(10, 12, "WiFi Setup Mode");
   u8g2.setFont(u8g2_font_5x7_tr);
-  u8g2.drawStr(10, 24, "SSID: GEM-Setup");
-  u8g2.drawStr(10, 34, "Pass: 12345678");
+  u8g2.drawStr(10, 24, "SSID: GEM Buddy");
+  u8g2.drawStr(10, 34, "Pass: 123456789");
   u8g2.drawStr(10, 44, "IP: 192.168.4.1");
   u8g2.drawStr(10, 54, "Tap touch to exit");
   u8g2.sendBuffer();
@@ -846,54 +974,177 @@ void closeWiFiSetup() {
 }
 
 void drawFaceScreen() {
-  bool night = isNightTime();
-  bool evening = isEveningTime() || rt.ambientDark;
-  bool smile = rt.faceMode != FACE_ALARM;
-
   u8g2.clearBuffer();
-  u8g2.drawRFrame(2, 2, 124, 60, 8);
-  drawBatteryBar();
+
+  // Dedicated Alarm / Reminder Screen - Centered Layout!
+  if (rt.faceMode == FACE_ALARM) {
+    u8g2.drawRFrame(4, 4, 120, 56, 8);
+    u8g2.setFont(u8g2_font_6x10_tf);
+    drawCentered(16, "🚨 REMINDER 🚨", u8g2_font_6x10_tf);
+    u8g2.drawHLine(12, 20, 104);
+    
+    char alarmName[24] = "Alarm";
+    if (rt.alarmIndex < 3) {
+      strcpy(alarmName, settings.alarms[rt.alarmIndex].name);
+    }
+    drawCentered(36, alarmName, u8g2_font_7x14_tf);
+    
+    char tBuf[16];
+    char dBuf[16];
+    formatLocalDateTime(dBuf, sizeof(dBuf), tBuf, sizeof(tBuf), false);
+    char timeLabel[32];
+    snprintf(timeLabel, sizeof(timeLabel), "Time: %s", tBuf);
+    drawCentered(52, timeLabel, u8g2_font_5x7_tr);
+    
+    u8g2.sendBuffer();
+    return;
+  }
+
+  // Dedicated Heart Rate Scan Dashboard - NO Eyes!
+  if (rt.faceMode == FACE_HEART) {
+    u8g2.setFont(u8g2_font_6x10_tf);
+    u8g2.drawStr(12, 14, "HEART RATE SCAN");
+    u8g2.drawHLine(6, 17, 116);
+
+    // Beating heart on the left side
+    int hcx = 36;
+    int hcy = 38;
+    bool isBeating = rt.pulseAbove || (rt.lastBeatMs > 0 && (millis() - rt.lastBeatMs < 200));
+    if (isBeating) {
+      u8g2.drawDisc(hcx - 6, hcy - 4, 6);
+      u8g2.drawDisc(hcx + 6, hcy - 4, 6);
+      u8g2.drawTriangle(hcx - 12, hcy - 2, hcx + 12, hcy - 2, hcx, hcy + 12);
+    } else {
+      u8g2.drawDisc(hcx - 5, hcy - 3, 5);
+      u8g2.drawDisc(hcx + 5, hcy - 3, 5);
+      u8g2.drawTriangle(hcx - 10, hcy - 2, hcx + 10, hcy - 2, hcx, hcy + 10);
+    }
+
+    // BPM text on the right side
+    u8g2.setFont(u8g2_font_7x14_tf);
+    char bpmStr[16];
+    if (rt.bpm > 0 && (millis() - rt.lastBeatMs < 4000)) {
+      snprintf(bpmStr, sizeof(bpmStr), "%d", rt.bpm);
+    } else {
+      strcpy(bpmStr, "--");
+    }
+    u8g2.drawStr(80, 36, bpmStr);
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.drawStr(80, 48, "BPM");
+    
+    if (!rt.fingerPresent) {
+      u8g2.setFont(u8g2_font_4x6_tr);
+      u8g2.drawStr(74, 58, "Place Finger...");
+    } else {
+      u8g2.setFont(u8g2_font_4x6_tr);
+      u8g2.drawStr(74, 58, "Scanning...");
+    }
+    
+    u8g2.sendBuffer();
+    return;
+  }
+
+  // Small clock on top-left
+  char timeStr[16];
+  char dateStr[16];
+  formatLocalDateTime(dateStr, sizeof(dateStr), timeStr, sizeof(timeStr), false);
   u8g2.setFont(u8g2_font_4x6_tr);
-  u8g2.drawStr(8, 9, settings.userName);
-  u8g2.drawStr(72, 9, settings.deviceName);
+  u8g2.drawStr(4, 8, timeStr);
+
+  // Draw WiFi symbol if connected, or slashed symbol if enabled but disconnected (at x = 114, y = 8)
+  if (WiFi.status() == WL_CONNECTED) {
+    u8g2.drawDisc(114, 8, 1);
+    u8g2.drawCircle(114, 8, 3, U8G2_DRAW_UPPER_RIGHT | U8G2_DRAW_UPPER_LEFT);
+    u8g2.drawCircle(114, 8, 5, U8G2_DRAW_UPPER_RIGHT | U8G2_DRAW_UPPER_LEFT);
+  } else if (settings.wifiEnabled) {
+    u8g2.drawDisc(114, 8, 1);
+    u8g2.drawCircle(114, 8, 3, U8G2_DRAW_UPPER_RIGHT | U8G2_DRAW_UPPER_LEFT);
+    u8g2.drawCircle(114, 8, 5, U8G2_DRAW_UPPER_RIGHT | U8G2_DRAW_UPPER_LEFT);
+    u8g2.drawLine(109, 2, 118, 9);
+  }
+
+  // Draw Lock symbol next to WiFi (at x = 120, y = 5) if security active
+  if (settings.monitoringEnabled) {
+    u8g2.drawBox(120, 5, 5, 4);
+    u8g2.drawCircle(122, 5, 2, U8G2_DRAW_UPPER_RIGHT | U8G2_DRAW_UPPER_LEFT);
+  }
 
   // Draw Picaio eyes
   drawFaceEyes();
 
-  // Draw Mouth
-  drawMouth(64, 48, smile, rt.faceMode == FACE_PET);
-
-  if (rt.faceMode == FACE_PET) {
-    drawHearts();
+  // Greeting speech bubble at the bottom - shown when pet active or periodic greeting active
+  if (rt.petActive || rt.greetingBubbleActive) {
+    u8g2.drawRFrame(2, 46, 124, 18, 3);
     u8g2.setFont(u8g2_font_5x7_tr);
-    u8g2.drawStr(22, 57, "I like your company");
-  } else if (rt.faceMode == FACE_NIGHT) {
+    // Draw speech bubble tip pointing up to the left eye
+    u8g2.drawTriangle(30, 46, 34, 42, 38, 46);
+    u8g2.setDrawColor(0);
+    u8g2.drawLine(31, 46, 37, 46);
+    u8g2.setDrawColor(1);
+    
+    char msg[32] = "";
+    if (rt.petActive) {
+      snprintf(msg, sizeof(msg), "Hello %s!", settings.deviceName);
+    } else {
+      switch (rt.greetingIndex) {
+        case 0:
+          snprintf(msg, sizeof(msg), "Hello %s!", settings.deviceName);
+          break;
+        case 1:
+          strcpy(msg, "How are you?");
+          break;
+        case 2:
+          strcpy(msg, "What's going on?");
+          break;
+        case 3: {
+          char tBuf[16];
+          char dBuf[16];
+          formatLocalDateTime(dBuf, sizeof(dBuf), tBuf, sizeof(tBuf), false);
+          snprintf(msg, sizeof(msg), "Time: %s", tBuf);
+          break;
+        }
+        case 4:
+        default: {
+          int count = 0;
+          char nextAlarmTime[16] = "";
+          for (uint8_t i = 0; i < settings.alarmCount && i < 6; ++i) {
+            if (settings.alarms[i].enabled) {
+              count++;
+              snprintf(nextAlarmTime, sizeof(nextAlarmTime), "%02d:%02d", settings.alarms[i].hour, settings.alarms[i].minute);
+            }
+          }
+          if (count > 0) {
+            snprintf(msg, sizeof(msg), "Alarm at %s", nextAlarmTime);
+          } else {
+            if (validClock()) {
+              time_t utc = time(nullptr);
+              time_t local = utc + (settings.timezoneOffsetMinutes * 60);
+              struct tm tmv;
+              gmtime_r(&local, &tmv);
+              int hr = tmv.tm_hour;
+              if (hr >= 5 && hr < 12) {
+                strcpy(msg, "Good morning!");
+              } else if (hr >= 12 && hr < 17) {
+                strcpy(msg, "Good afternoon!");
+              } else if (hr >= 17 && hr < 22) {
+                strcpy(msg, "Good evening!");
+              } else {
+                strcpy(msg, "Good night!");
+              }
+            } else {
+              strcpy(msg, "Good day!");
+            }
+          }
+          break;
+        }
+      }
+    }
+    u8g2.drawStr(8, 57, msg);
+  } 
+  else if (rt.faceMode == FACE_NIGHT) {
     drawZzz();
     u8g2.setFont(u8g2_font_5x7_tr);
-    u8g2.drawStr(12, 57, "I am getting sleepy...");
-  } else if (rt.faceMode == FACE_HEART) {
-    u8g2.setFont(u8g2_font_6x10_tr);
-    u8g2.drawStr(82, 32, "BPM");
-    char bpmText[8];
-    snprintf(bpmText, sizeof(bpmText), "%u", rt.bpm);
-    u8g2.drawStr(90, 44, bpmText);
-  } else if (rt.faceMode == FACE_ALARM) {
-    u8g2.setFont(u8g2_font_5x7_tr);
-    u8g2.drawStr(12, 57, settings.alarms[rt.alarmIndex].name);
-  } else {
-    u8g2.setFont(u8g2_font_4x6_tr);
-    if (night) {
-      u8g2.drawStr(12, 57, "Night sleep mode");
-    } else if (evening) {
-      u8g2.drawStr(12, 57, "Evening relax mode");
-    } else {
-      u8g2.drawStr(12, 57, "Day mode");
-    }
-  }
-
-  if (settings.lampState) {
-    u8g2.setFont(u8g2_font_4x6_tr);
-    u8g2.drawStr(94, 57, "Lamp");
+    u8g2.drawStr(12, 57, "Sleeping...");
   }
 
   u8g2.sendBuffer();
@@ -905,6 +1156,11 @@ void renderScreen() {
     return;
   }
 
+  if (rt.menuOpen) {
+    drawMenuScreen();
+    return;
+  }
+
   if (rt.welcomeActive) {
     drawWelcomeScreen();
     return;
@@ -912,11 +1168,6 @@ void renderScreen() {
 
   if (rt.timeOverlayActive && millis() < rt.timeOverlayUntil) {
     drawTimeOverlay();
-    return;
-  }
-
-  if (rt.menuOpen) {
-    drawMenuScreen();
     return;
   }
 
@@ -1028,10 +1279,30 @@ void updateWelcomeState() {
   if (rt.welcomeActive && millis() > rt.welcomeUntil) {
     if (!settings.setupComplete && rt.welcomeStep == 0) {
       rt.welcomeStep = 1;
-      rt.welcomeUntil = millis() + 600000UL; // Keep setup instructions screen on for 10 minutes
+      rt.welcomeUntil = millis() + 600000UL; // 10 minutes setup screen
     } else {
       rt.welcomeActive = false;
+      rt.faceMode = FACE_DAY;
     }
+  }
+}
+
+void updatePeriodicGreeting() {
+  if (rt.welcomeActive || rt.menuOpen || rt.faceMode == FACE_MENU || rt.faceMode == FACE_WIFI_SETUP || rt.faceMode == FACE_CONFIGURING) {
+    rt.greetingBubbleActive = false;
+    return;
+  }
+
+  uint32_t now = millis();
+  // Trigger every 4 seconds (2 seconds on, 2 seconds off)
+  if (now - rt.lastGreetingAt >= 5000) {
+    rt.lastGreetingAt = now;
+    rt.greetingBubbleActive = true;
+    rt.greetingBubbleUntil = now + 2000;
+    rt.greetingIndex = (rt.greetingIndex + 1) % 5;
+  }
+  if (rt.greetingBubbleActive && now >= rt.greetingBubbleUntil) {
+    rt.greetingBubbleActive = false;
   }
 }
 
@@ -1053,6 +1324,10 @@ void handleTouchReleaseTap(uint32_t heldMs) {
   }
 
   uint32_t now = millis();
+  if (rt.faceMode == FACE_WIFI_SETUP) {
+    closeWiFiSetup();
+    return;
+  }
   if (rt.menuOpen) {
     rt.menuIndex = (rt.menuIndex + 1) % MENU_ITEM_COUNT;
     rt.menuUntil = now + 15000;
@@ -1066,12 +1341,6 @@ void handleTouchReleaseTap(uint32_t heldMs) {
   rt.touch.tapCount++;
   rt.touch.lastTapAt = now;
 
-  if (rt.touch.tapCount == 2) {
-    openMenu();
-    rt.touch.tapCount = 0;
-    return;
-  }
-
   if (rt.touch.tapCount == 3) {
     toggleLampMode();
     rt.touch.tapCount = 0;
@@ -1080,55 +1349,95 @@ void handleTouchReleaseTap(uint32_t heldMs) {
 }
 
 void handleTouchInput() {
+  if (rt.welcomeActive || rt.faceMode == FACE_CONFIGURING) {
+    return;
+  }
   uint32_t now = millis();
   bool pressed = digitalRead(PIN_TOUCH) == HIGH;
-  if (rt.faceMode == FACE_WIFI_SETUP) {
+
+  // Active alarm dismissal via touch press
+  if (rt.alarmActive) {
     if (pressed && !rt.touch.pressed) {
+      Serial.println("Alarm dismissed by touch");
+      rt.alarmActive = false;
+      rt.alarmIndex = 255;
+      noTone(PIN_BUZZER);
+      
+      // Double click confirmation sound
+      tone(PIN_BUZZER, 1000, 100);
+      delay(120);
+      tone(PIN_BUZZER, 1500, 150);
+      
       rt.touch.pressed = true;
       rt.touch.pressedAt = now;
+      rt.touch.longHandled = true; // prevent long touch triggers
+      
+      rt.faceMode = FACE_DAY;
+      setLampOff();
+      saveSettings();
     }
     if (!pressed && rt.touch.pressed) {
       rt.touch.pressed = false;
-      closeWiFiSetup();
     }
     return;
   }
-  now = millis();
 
+  // Track touch press transition
   if (pressed && !rt.touch.pressed) {
+    Serial.println("Touch down");
+    tone(PIN_BUZZER, 2000, 50);
     rt.touch.pressed = true;
     rt.touch.pressedAt = now;
     rt.touch.longHandled = false;
     triggerCloudEvent("touch-down");
   }
 
+  // Detect long touch while holding
   if (pressed && rt.touch.pressed && !rt.touch.longHandled && now - rt.touch.pressedAt >= LONG_TOUCH_MS) {
     rt.touch.longHandled = true;
-    if (rt.menuOpen) {
+    Serial.println("Long touch detected");
+    tone(PIN_BUZZER, 2400, 150);
+
+    // If inside a sub-mode page (heart rate, info, wifi setup), long press exits to default face
+    if (rt.faceMode == FACE_HEART || rt.faceMode == FACE_INFO || rt.faceMode == FACE_WIFI_SETUP) {
+      if (rt.faceMode == FACE_HEART) {
+        stopHeartMode();
+      } else if (rt.faceMode == FACE_WIFI_SETUP) {
+        closeWiFiSetup();
+      } else {
+        rt.faceMode = FACE_DAY;
+      }
+      rt.menuOpen = false;
+      Serial.println("Exited sub-mode via long press");
+    }
+    // Else if menu is open, long press selects/activates highlight item
+    else if (rt.menuOpen) {
       activateMenuItem();
-    } else {
-      celebrateTouch();
+      Serial.println("Selected menu item via long press");
+    }
+    // Else, we are on normal screen: long press opens the menu
+    else {
+      openMenu();
       triggerCloudEvent("long-touch");
+      Serial.println("Opened menu via long press");
     }
   }
 
+  // Handle release
   if (!pressed && rt.touch.pressed) {
     uint32_t heldMs = now - rt.touch.pressedAt;
+    Serial.printf("Touch up, held %u ms\n", heldMs);
     rt.touch.pressed = false;
 
     if (rt.touch.longHandled) {
-      if (!rt.menuOpen) {
-        rt.petActive = true;
-        rt.petUntil = now + 2500;
-        rt.timeOverlayActive = false;
-      }
       return;
     }
 
     handleTouchReleaseTap(heldMs);
   }
 
-  if (rt.touch.tapCount > 0 && now - rt.touch.lastTapAt > TAP_WINDOW_MS) {
+  // Only reset the tapCount if the sensor is NOT currently pressed.
+  if (!pressed && rt.touch.tapCount > 0 && now - rt.touch.lastTapAt > TAP_WINDOW_MS) {
     rt.touch.tapCount = 0;
   }
 
@@ -1142,6 +1451,8 @@ void openSetupPortal(bool initial, uint32_t durationMs) {
   WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
   WiFi.softAP("GEM Buddy", GEM_HOTSPOT_PASSWORD);
   rt.menuUntil = millis() + durationMs;
+  rt.hotspotActiveState = true;
+  rt.hotspotStateTimer = millis() + 600000UL;
 }
 
 void startHotspotPortal(bool allowStation, bool initialSetup) {
@@ -1194,9 +1505,10 @@ String buildStateJson() {
   json += "\"monitoringEnabled\":" + String(settings.monitoringEnabled ? "true" : "false") + ",";
   json += "\"faceMode\":" + String((int)rt.faceMode) + ",";
   json += "\"timeValid\":" + String(validClock() ? "true" : "false") + ",";
+  json += "\"bpm\":" + String(rt.bpm) + ",";
   json += "\"ip\":\"" + WiFi.localIP().toString() + "\"";
   json += ",\"alarms\":[";
-  for (uint8_t i = 0; i < settings.alarmCount && i < 3; ++i) {
+  for (uint8_t i = 0; i < settings.alarmCount && i < 6; ++i) {
     if (i) json += ",";
     json += "{";
     json += "\"enabled\":" + String(settings.alarms[i].enabled ? "true" : "false") + ",";
@@ -1212,78 +1524,185 @@ String buildStateJson() {
 
 void handleRoot() {
   String html;
-  html.reserve(2600);
+  html.reserve(6000);
+
+  // --- Head & Styles ---
   html += "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
-  html += "<meta charset='utf-8'><title>GEM</title>";
-  html += "<style>";
-  html += "body{margin:0;font-family:system-ui;background:linear-gradient(135deg,#09111f,#1b2a44);color:#eef3ff;padding:18px}";
-  html += ".card{max-width:720px;margin:0 auto;background:rgba(255,255,255,.08);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.16);border-radius:24px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.35)}";
-  html += "h1{margin:0 0 10px;font-size:28px}";
-  html += ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}";
-  html += ".tile{background:rgba(255,255,255,.08);padding:14px;border-radius:18px}";
-  html += "label{display:block;font-size:12px;opacity:.8;margin-top:10px}";
-  html += "input,select{width:100%;padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#0f1726;color:#fff}";
-  html += "button{margin-top:12px;padding:12px 16px;border:0;border-radius:999px;background:#79d8ff;color:#08202d;font-weight:700}";
-  html += "a{color:#79d8ff}";
-  html += "</style></head><body><div class='card'>";
-  html += "<h1>GEM Setup</h1>";
-  html += "<div class='grid'>";
-  html += "<div class='tile'>Device: " + String(settings.deviceName) + "<br>User: " + String(settings.userName) + "<br>Battery: " + String(rt.batteryPercent) + "%</div>";
-  html += "<div class='tile'>Wi-Fi: " + String(WiFi.status() == WL_CONNECTED ? "connected" : "offline") + "<br>Hotspot: " + String(settings.hotspotEnabled ? "enabled" : "off") + "</div>";
-  html += "<div class='tile'>Time: " + String(validClock() ? "set" : "not set") + "<br>Local IP: " + WiFi.localIP().toString() + "</div>";
+  html += "<meta charset='utf-8'><title>GEM Buddy Setup</title><style>";
+  html += "*{box-sizing:border-box;margin:0;padding:0}";
+  html += "body{font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(135deg,#09111f 0%,#1b2a44 100%);color:#eef3ff;min-height:100vh;padding:16px}";
+  html += ".wrap{max-width:680px;margin:0 auto}";
+  html += "h1{font-size:26px;font-weight:800;margin-bottom:4px}";
+  html += ".sub{font-size:13px;opacity:.55;margin-bottom:20px}";
+  html += ".card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:20px;padding:18px;margin-bottom:16px;backdrop-filter:blur(12px)}";
+  html += ".card h2{font-size:14px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;opacity:.6;margin-bottom:14px}";
+  html += ".row{display:grid;grid-template-columns:1fr 1fr;gap:10px}";
+  html += "label{display:block;font-size:11px;opacity:.65;margin-bottom:4px;margin-top:12px}";
+  html += "input[type=text],input[type=password],input[type=time]{width:100%;padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.35);color:#fff;font-size:13px}";
+  html += "input[type=text]:focus,input[type=password]:focus,input[type=time]:focus{outline:none;border-color:#79d8ff}";
+  html += ".alarm-block{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:12px;margin-bottom:10px}";
+  html += ".alarm-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}";
+  html += ".alarm-header span{font-size:13px;font-weight:600;opacity:.8}";
+  html += ".toggle{display:flex;align-items:center;gap:6px;font-size:12px;opacity:.7;cursor:pointer}";
+  html += ".toggle input[type=checkbox]{width:16px;height:16px;accent-color:#79d8ff;cursor:pointer}";
+  html += ".stat{display:inline-block;background:rgba(121,216,255,.12);border-radius:8px;padding:4px 10px;font-size:12px;margin:3px 3px 3px 0}";
+  html += ".stat.ok{background:rgba(80,220,140,.15);color:#50dc8c}";
+  html += ".stat.off{background:rgba(255,255,255,.06);opacity:.5}";
+  html += ".btn{display:block;width:100%;margin-top:16px;padding:13px;border:0;border-radius:14px;background:linear-gradient(90deg,#79d8ff,#4fb3e8);color:#06192a;font-size:15px;font-weight:800;cursor:pointer;letter-spacing:.3px}";
+  html += ".btn:hover{opacity:.9}";
+  html += ".link-row{text-align:center;margin-top:14px;font-size:12px;opacity:.45}";
+  html += ".link-row a{color:#79d8ff}";
+  html += "</style></head><body><div class='wrap'>";
+
+  // --- Header ---
+  html += "<h1>⚡ GEM Buddy</h1>";
+  html += "<p class='sub'>Device Setup & Configuration Portal</p>";
+
+  // --- Status Card ---
+  html += "<div class='card'><h2>Live Status</h2>";
+  html += "<span class='stat" + String(WiFi.status() == WL_CONNECTED ? " ok" : " off") + "'>";
+  html += WiFi.status() == WL_CONNECTED ? "📶 Wi-Fi On" : "📶 Wi-Fi Off";
+  html += "</span>";
+  html += "<span class='stat" + String(validClock() ? " ok" : " off") + "'>";
+  html += validClock() ? "🕐 Time Set" : "🕐 Time Not Set";
+  html += "</span>";
+  html += "<span class='stat" + String(settings.monitoringEnabled ? " ok" : " off") + "'>";
+  html += settings.monitoringEnabled ? "🔒 Guard On" : "🔒 Guard Off";
+  html += "</span>";
+  html += "<span class='stat'>";
+  html += "🔋 " + String(rt.batteryPercent) + "%";
+  html += "</span>";
+  if (WiFi.status() == WL_CONNECTED) {
+    html += "<span class='stat ok'>📍 " + WiFi.localIP().toString() + "</span>";
+  }
   html += "</div>";
-  html += "<p>Use the app or this page to save the first setup, alarms, LED settings, time, and hotspot behavior.</p>";
+
+  // --- Main Form ---
   html += "<form method='post' action='/api/save'>";
-  html += "<label>User name</label><input name='userName' value='" + String(settings.userName) + "'>";
-  html += "<label>Device name</label><input name='deviceName' value='" + String(settings.deviceName) + "'>";
-  html += "<label>Timezone label</label><input name='tzLabel' value='" + String(settings.timezoneLabel) + "'>";
-  html += "<label>Timezone offset minutes</label><input name='tzOffset' value='" + String(settings.timezoneOffsetMinutes) + "'>";
-  html += "<label>Wi-Fi SSID</label><input name='wifiSsid' value='" + String(settings.wifiSsid) + "'>";
-  html += "<label>Wi-Fi password</label><input name='wifiPass' type='password' value='" + String(settings.wifiPass) + "'>";
-  html += "<label><input type='checkbox' name='wifiEnabled' ";
-  if (settings.wifiEnabled) html += "checked";
-  html += "> Enable Wi-Fi</label>";
-  html += "<label><input type='checkbox' name='hotspotEnabled' ";
-  if (settings.hotspotEnabled) html += "checked";
-  html += "> Keep hotspot active</label>";
-  html += "<label><input type='checkbox' name='monitoringEnabled' ";
-  if (settings.monitoringEnabled) html += "checked";
-  html += "> Monitoring</label>";
-  html += "<label>Webhook URL</label><input name='webhook' value='" + String(settings.cloudWebhook) + "'>";
-  html += "<button type='submit'>Save Settings and Reboot</button></form>";
-  html += "<p><a href='/api/state'>JSON state</a> | <a href='/api/factory-reset'>Factory reset</a></p>";
+
+  // Profile
+  html += "<div class='card'><h2>👤 Profile</h2>";
+  html += "<label>Your Name</label><input type='text' name='userName' value='" + String(settings.userName) + "'>";
+  html += "<label>Device Nickname</label><input type='text' name='deviceName' value='" + String(settings.deviceName) + "'>";
+  html += "<div class='row'>";
+  html += "<div><label>Timezone Label</label><input type='text' name='tzLabel' value='" + String(settings.timezoneLabel) + "'></div>";
+  html += "<div><label>UTC Offset (min)</label><input type='text' name='tzOffset' value='" + String(settings.timezoneOffsetMinutes) + "'></div>";
+  html += "</div></div>";
+
+  // Wi-Fi
+  html += "<div class='card'><h2>📶 Wi-Fi Connection</h2>";
+  html += "<label>SSID (Network Name)</label><input type='text' name='wifiSsid' value='" + String(settings.wifiSsid) + "'>";
+  html += "<label>Password</label><input type='password' name='wifiPass' value='" + String(settings.wifiPass) + "'>";
+  html += "<label class='toggle' style='margin-top:14px'><input type='checkbox' name='wifiEnabled'";
+  if (settings.wifiEnabled) html += " checked";
+  html += "> Connect to Wi-Fi on boot</label>";
+  html += "<label class='toggle'><input type='checkbox' name='hotspotEnabled'";
+  if (settings.hotspotEnabled) html += " checked";
+  html += "> Keep hotspot (AP) always active</label>";
+  html += "</div>";
+
+  // Security
+  html += "<div class='card'><h2>🔒 Desk Security</h2>";
+  html += "<label class='toggle' style='margin-top:0'><input type='checkbox' name='monitoringEnabled'";
+  if (settings.monitoringEnabled) html += " checked";
+  html += "> Enable shadow/movement monitoring</label>";
+  html += "<label>Cloud Webhook URL (for alerts)</label><input type='text' name='webhook' value='" + String(settings.cloudWebhook) + "'>";
+  html += "</div>";
+
+  // Alarms — 6 slots
+  html += "<div class='card'><h2>⏰ Reminders & Alarms (max 6)</h2>";
+  for (uint8_t i = 0; i < 6; i++) {
+    bool hasAlarm = (i < settings.alarmCount);
+    String aName  = hasAlarm ? String(settings.alarms[i].name)   : "Alarm " + String(i + 1);
+    uint8_t aHour = hasAlarm ? settings.alarms[i].hour   : 7;
+    uint8_t aMin  = hasAlarm ? settings.alarms[i].minute : 0;
+    bool aEnabled = hasAlarm ? settings.alarms[i].enabled : false;
+
+    char timeBuf[6];
+    snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", aHour, aMin);
+
+    html += "<div class='alarm-block'>";
+    html += "<div class='alarm-header'><span>Reminder " + String(i + 1) + "</span>";
+    html += "<label class='toggle'><input type='checkbox' name='alarm" + String(i) + "_enabled'";
+    if (aEnabled) html += " checked";
+    html += "> Enabled</label></div>";
+    html += "<div class='row'>";
+    html += "<div><label>Time</label><input type='time' name='alarm" + String(i) + "_hour' value='" + String(timeBuf) + "' onchange=\"var p=this.value.split(':');document.getElementById('am" + String(i) + "h').value=p[0];document.getElementById('am" + String(i) + "m').value=p[1];\"></div>";
+    html += "<div><label>Name / Label</label><input type='text' name='alarm" + String(i) + "_name' value='" + aName + "'></div>";
+    html += "</div>";
+    // Hidden fields to submit hour and minute separately from the time input
+    html += "<input type='hidden' id='am" + String(i) + "h' name='alarm" + String(i) + "_hour_v' value='" + String(aHour) + "'>";
+    html += "<input type='hidden' id='am" + String(i) + "m' name='alarm" + String(i) + "_minute_v' value='" + String(aMin) + "'>";
+    html += "</div>";
+  }
+  html += "<input type='hidden' name='alarmCount' value='6'>";
+  html += "</div>";
+
+  // Submit
+  html += "<button class='btn' type='submit'>💾 Save All Settings & Reboot</button>";
+  html += "</form>";
+
+  // Links
+  html += "<p class='link-row'><a href='/api/state'>JSON State</a> &nbsp;|&nbsp; <a href='/api/factory-reset'>Factory Reset</a></p>";
   html += "</div></body></html>";
+
   server.send(200, "text/html", html);
 }
 
+
 void applySettingsFromRequest() {
+  bool oldMonitoring = settings.monitoringEnabled;
+  bool oldWifi = settings.wifiEnabled;
+
   if (server.hasArg("userName")) copyText(settings.userName, sizeof(settings.userName), server.arg("userName").c_str());
   if (server.hasArg("deviceName")) copyText(settings.deviceName, sizeof(settings.deviceName), server.arg("deviceName").c_str());
   if (server.hasArg("tzLabel")) copyText(settings.timezoneLabel, sizeof(settings.timezoneLabel), server.arg("tzLabel").c_str());
   if (server.hasArg("tzOffset")) settings.timezoneOffsetMinutes = server.arg("tzOffset").toInt();
   if (server.hasArg("wifiSsid")) copyText(settings.wifiSsid, sizeof(settings.wifiSsid), server.arg("wifiSsid").c_str());
   if (server.hasArg("wifiPass")) copyText(settings.wifiPass, sizeof(settings.wifiPass), server.arg("wifiPass").c_str());
-  settings.wifiEnabled = server.hasArg("wifiEnabled");
-  settings.hotspotEnabled = server.hasArg("hotspotEnabled");
-  settings.monitoringEnabled = server.hasArg("monitoringEnabled");
+  settings.wifiEnabled = server.hasArg("wifiEnabled") ? argTrue(server.arg("wifiEnabled")) : false;
+  settings.hotspotEnabled = server.hasArg("hotspotEnabled") ? argTrue(server.arg("hotspotEnabled")) : false;
+  settings.monitoringEnabled = server.hasArg("monitoringEnabled") ? argTrue(server.arg("monitoringEnabled")) : false;
   if (server.hasArg("webhook")) copyText(settings.cloudWebhook, sizeof(settings.cloudWebhook), server.arg("webhook").c_str());
 
-  for (uint8_t i = 0; i < 3; ++i) {
+  if (settings.monitoringEnabled && (!oldMonitoring || !settings.wifiEnabled)) {
+    settings.wifiEnabled = true;
+    scheduleNetworking();
+  }
+
+  for (uint8_t i = 0; i < 6; ++i) {
     String base = "alarm" + String(i);
-    String hourKey = base + "_hour";
-    String minKey = base + "_minute";
+    String hourKey = base + "_hour";   // may be "HH:MM" from time input or plain int from app
+    String minKey  = base + "_minute"; // plain int from app only
     String nameKey = base + "_name";
     String enabledKey = base + "_enabled";
-    if (server.hasArg(hourKey)) settings.alarms[i].hour = (uint8_t)server.arg(hourKey).toInt();
-    if (server.hasArg(minKey)) settings.alarms[i].minute = (uint8_t)server.arg(minKey).toInt();
-    if (server.hasArg(nameKey)) copyText(settings.alarms[i].name, sizeof(settings.alarms[i].name), server.arg(nameKey).c_str());
-    settings.alarms[i].enabled = server.hasArg(enabledKey) ? argTrue(server.arg(enabledKey)) : settings.alarms[i].enabled;
+
+    if (server.hasArg(hourKey)) {
+      String val = server.arg(hourKey);
+      int colonIdx = val.indexOf(':');
+      if (colonIdx >= 0) {
+        // Format "HH:MM" from browser time input
+        settings.alarms[i].hour   = (uint8_t)val.substring(0, colonIdx).toInt();
+        settings.alarms[i].minute = (uint8_t)val.substring(colonIdx + 1).toInt();
+      } else {
+        // Plain integer from app API
+        settings.alarms[i].hour = (uint8_t)val.toInt();
+        if (server.hasArg(minKey)) {
+          settings.alarms[i].minute = (uint8_t)server.arg(minKey).toInt();
+        }
+      }
+    }
+    if (server.hasArg(nameKey)) {
+      copyText(settings.alarms[i].name, sizeof(settings.alarms[i].name), server.arg(nameKey).c_str());
+    }
+    // Checkboxes: present = enabled, absent = disabled (both web portal and app POST)
+    settings.alarms[i].enabled = server.hasArg(enabledKey) ? argTrue(server.arg(enabledKey)) : false;
   }
 
   if (server.hasArg("alarmCount")) {
     int count = server.arg("alarmCount").toInt();
     if (count < 0) count = 0;
-    if (count > 3) count = 3;
+    if (count > 6) count = 6;
     settings.alarmCount = (uint8_t)count;
   }
 
@@ -1302,15 +1721,24 @@ void handleSave() {
     setTimeFromArgs();
   }
 
-  rt.faceMode = FACE_CONFIGURING;
-  rt.welcomeActive = false;
-  rt.lastOledUpdate = 0; // Force immediate redraw
-  renderScreen();
+  bool needsReboot = false;
+  if (server.hasArg("wifiSsid") || server.hasArg("wifiPass") || server.hasArg("reboot")) {
+    needsReboot = true;
+  }
 
-  String response = "<html><body>Saved to flash. Rebooting... <a href='/'>Back</a></body></html>";
   server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.send(200, "text/html", response);
-  scheduleRestart();
+  if (needsReboot) {
+    rt.faceMode = FACE_CONFIGURING;
+    rt.welcomeActive = false;
+    rt.lastOledUpdate = 0; // Force immediate redraw
+    renderScreen();
+
+    String response = "<html><body>Saved to flash. Rebooting... <a href='/'>Back</a></body></html>";
+    server.send(200, "text/html", response);
+    scheduleRestart();
+  } else {
+    server.send(200, "application/json", "{\"ok\":true}");
+  }
 }
 
 void handleState() {
@@ -1338,12 +1766,29 @@ void handleFactoryReset() {
   scheduleRestart();
 }
 
+void handleHeartApi() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  if (server.hasArg("action")) {
+    String action = server.arg("action");
+    if (action == "start") {
+      startHeartMode();
+      server.send(200, "application/json", "{\"ok\":true,\"scanning\":true}");
+      return;
+    } else if (action == "stop") {
+      stopHeartMode();
+      server.send(200, "application/json", "{\"ok\":true,\"scanning\":false}");
+      return;
+    }
+  }
+  server.send(200, "application/json", "{\"ok\":true,\"scanning\":" + String(rt.heartModeActive ? "true" : "false") + ",\"bpm\":" + String(rt.bpm) + "}");
+}
+
 void handleNotFound() {
   server.send(404, "text/plain", "GEM says not found");
 }
 
 void setupPins() {
-  pinMode(PIN_TOUCH, INPUT);
+  pinMode(PIN_TOUCH, INPUT_PULLDOWN);
   pinMode(PIN_PULSE_POWER, OUTPUT);
   pinMode(PIN_BUZZER, OUTPUT);
   pinMode(PIN_LDR_ADC, INPUT);
@@ -1361,28 +1806,38 @@ void setupPins() {
   setAllLeds(0);
   digitalWrite(PIN_PULSE_POWER, LOW);
 }
-
 void setupNetworking() {
   Serial.println("Shutting down WiFi radio...");
   WiFi.mode(WIFI_OFF);
-  delay(100); // Allow RF radio to settle
+  delay(150); // Allow RF radio to settle
 
   const bool canConnectStation = settings.wifiEnabled && settings.wifiSsid[0] != '\0';
-  const bool keepHotspot = settings.hotspotEnabled || !settings.setupComplete;
+  // Keep hotspot active on boot for 10 min window (even if hotspotEnabled is false in settings)
+  const bool keepHotspot = true; 
 
-  if (keepHotspot) {
-    Serial.println("Starting SoftAP hotspot...");
-    startHotspotPortal(canConnectStation, !settings.setupComplete);
-  }
+  Serial.println("Starting SoftAP hotspot (temporary boot window)...");
+  startHotspotPortal(canConnectStation, !settings.setupComplete);
+  delay(100); // Allow hotspot startup to settle
 
   if (canConnectStation) {
     Serial.println("Configuring station connection...");
-    WiFi.mode(keepHotspot ? WIFI_AP_STA : WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
+    delay(100); // Allow mode transition to settle
+    
+    // Mask SSID for security print
+    char maskedSsid[32] = "";
+    if (strlen(settings.wifiSsid) > 3) {
+      strncpy(maskedSsid, settings.wifiSsid, 3);
+      maskedSsid[3] = '\0';
+      strcat(maskedSsid, "...");
+    } else {
+      strcpy(maskedSsid, "...");
+    }
+    Serial.printf("Connecting to station SSID: %s (pass length: %d)\n", maskedSsid, strlen(settings.wifiPass));
+    
     if (settings.wifiPass[0] == '\0') {
-      Serial.println("Connecting to open network: " + String(settings.wifiSsid));
       WiFi.begin(settings.wifiSsid);
     } else {
-      Serial.println("Connecting to secured network: " + String(settings.wifiSsid));
       WiFi.begin(settings.wifiSsid, settings.wifiPass);
     }
 
@@ -1396,30 +1851,32 @@ void setupNetworking() {
 
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println("WiFi Connected! IP: " + WiFi.localIP().toString());
+      configTime(settings.timezoneOffsetMinutes * 60, 0, "pool.ntp.org", "time.nist.gov");
+      Serial.println("NTP Time Sync Configured.");
+      
+      if (MDNS.begin("gem-buddy")) {
+        Serial.println("mDNS responder started: gem-buddy.local");
+        MDNS.addService("http", "tcp", 80);
+      } else {
+        Serial.println("Error setting up MDNS responder!");
+      }
     } else {
       Serial.println("WiFi Connection Failed!");
-      if (!keepHotspot) {
-        // Fallback: Start hotspot and setup screen so user is not stranded
-        Serial.println("Starting fallback Hotspot portal (GEM Buddy)...");
-        startHotspotPortal(true, false);
-        
-        rt.welcomeActive = true;
-        rt.welcomeStep = 1;
-        rt.welcomeUntil = millis() + 600000UL; // Keep setup screen active for 10 minutes
-      }
+      // Hotspot is already started, so we don't need to start a fallback.
     }
   } else {
     Serial.println("No Station configuration. Setting Mode...");
-    WiFi.mode(keepHotspot ? WIFI_AP : WIFI_OFF);
+    WiFi.mode(WIFI_AP);
+    delay(100);
   }
 }
-
 void setupServer() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/save", HTTP_ANY, handleSave);
   server.on("/api/time", HTTP_ANY, handleTimeSet);
   server.on("/api/factory-reset", HTTP_GET, handleFactoryReset);
+  server.on("/api/heart", HTTP_ANY, handleHeartApi);
   
   // OTA firmware update endpoint
   server.on("/api/update", HTTP_POST, []() {
@@ -1467,40 +1924,125 @@ void bootScreen(bool initial) {
   u8g2.sendBuffer();
 }
 
+void printResetReason() {
+  esp_reset_reason_t reason = esp_reset_reason();
+  Serial.printf("ESP32 Reset Reason: %d - ", reason);
+  switch (reason) {
+    case ESP_RST_UNKNOWN:   Serial.println("Unknown"); break;
+    case ESP_RST_POWERON:   Serial.println("Power-on"); break;
+    case ESP_RST_EXT:       Serial.println("External pin"); break;
+    case ESP_RST_SW:        Serial.println("Software reset"); break;
+    case ESP_RST_PANIC:     Serial.println("Exception/Panic"); break;
+    case ESP_RST_INT_WDT:   Serial.println("Interrupt Watchdog"); break;
+    case ESP_RST_TASK_WDT:  Serial.println("Task Watchdog"); break;
+    case ESP_RST_WDT:       Serial.println("Other Watchdog"); break;
+    case ESP_RST_DEEPSLEEP: Serial.println("Deep Sleep"); break;
+    case ESP_RST_BROWNOUT:  Serial.println("Brownout"); break;
+    case ESP_RST_SDIO:      Serial.println("SDIO"); break;
+    default:                Serial.println("Other"); break;
+  }
+}
+
 void setup() {
   Serial.begin(115200);
-  Serial.println("GEM Booting...");
+  delay(500); // Give serial monitor time to connect
+  Serial.println("\n=================================");
+  Serial.println("GEM Starting Setup Sequence...");
+  printResetReason();
+  
+  Serial.println("[1/7] Initializing Pins...");
   setupPins();
+  
+  Serial.println("[2/7] Initializing Display...");
   u8g2.begin();
-  Serial.println("Display initialized");
+  Serial.println("Display initialized successfully");
 
+  Serial.println("[3/7] Loading Settings...");
   loadSettings();
-  Serial.println("Settings loaded");
+  Serial.printf("Settings loaded: setupComplete = %s\n", settings.setupComplete ? "true" : "false");
+
+  // Restore last known time from NVS to prevent resetting to 1970 on boot
+  prefs.begin(GEM_PREF_NAMESPACE, true);
+  uint32_t lastTime = prefs.getUInt("lastTime", 1700000000);
+  prefs.end();
+  struct timeval tv;
+  tv.tv_sec = lastTime;
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+  Serial.printf("System time initialized to last known epoch: %u\n", lastTime);
+  
   bootScreen(!settings.setupComplete);
+  
   if (!settings.setupComplete) {
     rt.welcomeActive = true;
     rt.welcomeStep = 0;
-    rt.welcomeUntil = millis() + 4000; // 4 seconds hello screen
+    rt.welcomeUntil = millis() + 8000; // 8 seconds hello screen
   } else {
-    rt.welcomeActive = false;
-    rt.welcomeStep = 0;
-    rt.welcomeUntil = 0;
+    rt.welcomeActive = true;
+    rt.welcomeStep = 2; // Returning user greeting
+    rt.welcomeUntil = millis() + 8000; // 8 seconds personalized greeting screen
+    rt.faceMode = FACE_WELCOME;
   }
+  
+  // Initialize hotspot timer cycle on boot (start with 10-minute ON phase)
+  rt.hotspotActiveState = true;
+  rt.hotspotStateTimer = millis() + 600000UL;
 
+  Serial.println("[4/7] Refreshing Sensors...");
   refreshSensors(true);
-  Serial.println("Sensors refreshed");
+  Serial.println("Sensors refreshed successfully");
+  
+  Serial.println("[5/7] Initializing Networking...");
   setupNetworking();
-  Serial.println("Networking setup complete");
+  Serial.println("Networking initialization finished");
+  
+  Serial.println("[6/7] Initializing Web Server...");
   setupServer();
-  Serial.println("Web server started");
+  Serial.println("Web server started successfully");
 
   if (validClock() && settings.setupComplete) {
     rt.welcomeActive = false;
   }
 
-  Serial.println("Rendering first screen...");
+  Serial.println("[7/7] Rendering first screen...");
   renderScreen();
-  Serial.println("Setup finished!");
+  Serial.println("Setup Sequence Finished!");
+  Serial.println("=================================\n");
+}
+void updateHotspotTimeout() {
+  if (settings.hotspotEnabled) return;
+  if (!settings.setupComplete) return;
+
+  const bool canConnectStation = settings.wifiEnabled && settings.wifiSsid[0] != '\0';
+  uint32_t now = millis();
+
+  if (rt.hotspotActiveState) {
+    // Hotspot is in the ON phase of the cycle
+    int stationNum = WiFi.softAPgetStationNum();
+    if (stationNum > 0) {
+      // Client connected, keep ON timer extended
+      rt.hotspotStateTimer = now + 600000UL;
+    } else if (now > rt.hotspotStateTimer) {
+      Serial.println("Hotspot cycle: Transitioning to OFF phase (20 mins)...");
+      rt.hotspotActiveState = false;
+      rt.hotspotStateTimer = now + 1200000UL;
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        WiFi.mode(WIFI_STA);
+      } else {
+        WiFi.mode(WIFI_OFF);
+      }
+    }
+  } else {
+    // Hotspot is in the OFF phase of the cycle
+    if (now > rt.hotspotStateTimer) {
+      Serial.println("Hotspot cycle: Transitioning to ON phase (10 mins)...");
+      rt.hotspotActiveState = true;
+      rt.hotspotStateTimer = now + 600000UL;
+      
+      startHotspotPortal(canConnectStation, false);
+    }
+  }
 }
 
 void loop() {
@@ -1509,15 +2051,29 @@ void loop() {
     delay(100);
     ESP.restart();
   }
+  if (networkingPending && !restartPending && (int32_t)(millis() - networkingAtMs) >= 0) {
+    networkingPending = false;
+    setupNetworking();
+  }
   refreshSensors(false);
   handleTouchInput();
   updateWelcomeState();
+  updatePeriodicGreeting();
+  updateHotspotTimeout();
   updateMenuTimeout();
   updateHeartMode();
   updateAlarmRuntime();
   checkAlarms();
+  checkAutoLamp();
   maybeWakeTimeDisplay();
   updateLampAutoOff();
+
+  // Periodically save the last known time to NVS (every 60 seconds) if time is valid
+  static uint32_t lastTimeSaveMs = 0;
+  if (validClock() && millis() - lastTimeSaveMs >= 60000) {
+    lastTimeSaveMs = millis();
+    saveLastKnownTime();
+  }
 
   if (rt.batteryCritical) {
     if (!rt.deepSleepReady) {

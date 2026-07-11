@@ -154,11 +154,11 @@ class ControlScreen extends ConsumerWidget {
                               size: 20,
                             ),
                             label: Text(
-                              deviceState.isHeartScanning ? 'Scanning Pulse (${deviceState.bpm} BPM)...' : 'Start Heart Scan',
+                              deviceState.isHeartScanning ? 'Stop Heart Scan (${deviceState.bpm} BPM)' : 'Start Heart Scan',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                             ),
                             onPressed: deviceState.isHeartScanning 
-                                ? null 
+                                ? () => deviceNotifier.stopHeartScan()
                                 : () => deviceNotifier.startHeartScan(),
                           ),
                         ),
@@ -181,10 +181,10 @@ class ControlScreen extends ConsumerWidget {
                         Row(
                           children: [
                             Text(
-                              '${deviceState.alarms.length}/3 configured',
+                              '${deviceState.alarms.length}/6 configured',
                               style: const TextStyle(color: GemColors.textSecondary, fontSize: 12),
                             ),
-                            if (deviceState.alarms.length < 3) ...[
+                            if (deviceState.alarms.length < 6) ...[
                               const SizedBox(width: 8),
                               IconButton(
                                 icon: const Icon(Icons.add_circle_outline_rounded, color: GemColors.accentBlue, size: 22),

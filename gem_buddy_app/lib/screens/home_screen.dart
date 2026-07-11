@@ -298,49 +298,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     
                     // 3. Heart Card
                     Expanded(
-                      child: GlassCard(
-                        height: 155,
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Icon(Icons.favorite_rounded, color: GemColors.statusAlert, size: 22),
-                                if (deviceState.isHeartScanning)
-                                  const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(GemColors.statusAlert),
+                      child: GestureDetector(
+                        onTap: () {
+                          if (deviceState.isHeartScanning) {
+                            deviceNotifier.stopHeartScan();
+                          } else {
+                            deviceNotifier.startHeartScan();
+                          }
+                        },
+                        child: GlassCard(
+                          height: 155,
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Icon(Icons.favorite_rounded, color: GemColors.statusAlert, size: 22),
+                                  if (deviceState.isHeartScanning)
+                                    const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(GemColors.statusAlert),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Last Pulse', style: TextStyle(color: GemColors.textSecondary, fontSize: 12)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    deviceState.bpm > 0 ? '${deviceState.bpm} BPM' : '-- BPM',
+                                    style: const TextStyle(color: GemColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    deviceState.isHeartScanning ? 'Scanning (Tap to Stop)' : 'Start Scan (Tap)',
+                                    style: TextStyle(
+                                      color: deviceState.isHeartScanning ? GemColors.statusActive : GemColors.textSecondary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                              ],
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Last Pulse', style: TextStyle(color: GemColors.textSecondary, fontSize: 12)),
-                                const SizedBox(height: 4),
-                                Text(
-                                  deviceState.bpm > 0 ? '${deviceState.bpm} BPM' : '-- BPM',
-                                  style: const TextStyle(color: GemColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  deviceState.isHeartScanning ? 'Scanning...' : 'Idle health sync',
-                                  style: TextStyle(
-                                    color: deviceState.isHeartScanning ? GemColors.statusActive : GemColors.textSecondary,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -380,9 +389,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     icon: Icons.sync_rounded, 
                                     label: 'Sync State',
                                     color: GemColors.accentBlue,
-                                    onTap: () => deviceState.isSimulated 
-                                        ? deviceNotifier.findMyGem() // beep feedback
-                                        : deviceNotifier.fetchDeviceState(),
+                                    onTap: () async {
+                                      if (deviceState.isSimulated) {
+                                        deviceNotifier.findMyGem(); // beep feedback
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('🔄 Syncing settings with GEM...'),
+                                            duration: Duration(milliseconds: 1000),
+                                          ),
+                                        );
+                                        final success = await deviceNotifier.saveSettings(
+                                          userName: userSettings.userName,
+                                          deviceName: userSettings.deviceNickname,
+                                          timezoneLabel: deviceState.timezoneLabel,
+                                          timezoneOffsetMinutes: deviceState.timezoneOffsetMinutes,
+                                        );
+                                        await deviceNotifier.fetchDeviceState();
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(success 
+                                                  ? '✨ GEM successfully synced!' 
+                                                  : '⚠️ Could not sync settings with GEM.'),
+                                              backgroundColor: success 
+                                                  ? GemColors.statusActive 
+                                                  : GemColors.statusAlert,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
                                   ),
                                 ),
                               ],

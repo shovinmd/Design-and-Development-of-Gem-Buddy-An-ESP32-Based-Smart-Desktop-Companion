@@ -306,64 +306,125 @@ class DeviceNotifier extends Notifier<DeviceState> {
     state = state.copyWith(lastNotificationMessage: null);
   }
 
+  Future<void> _updateSavedIp(String newIp) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_device_ip', newIp);
+    } catch (_) {}
+  }
+
   Future<void> fetchDeviceState() async {
     if (state.isSimulated) return;
     
+    String activeIp = state.ipAddress;
+    http.Response? response;
+    
     try {
-      final response = await http.get(Uri.parse('http://${state.ipAddress}/api/state'))
+      response = await http.get(Uri.parse('http://$activeIp/api/state'))
           .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      // If direct IP fails and we aren't already trying gem-buddy.local, fallback to mDNS hostname resolution
+      if (activeIp != 'gem-buddy.local') {
+        try {
+          if (kDebugMode) print("Connection to $activeIp failed. Trying fallback hostname gem-buddy.local...");
+          final fallbackResponse = await http.get(Uri.parse('http://gem-buddy.local/api/state'))
+              .timeout(const Duration(seconds: 3));
+          if (fallbackResponse.statusCode == 200) {
+            response = fallbackResponse;
+            activeIp = 'gem-buddy.local';
+          }
+        } catch (err) {
+          if (kDebugMode) print("Fallback to gem-buddy.local failed: $err");
+        }
+      }
+    }
+
+    if (response == null || response.statusCode != 200) {
+      state = state.copyWith(isConnected: false, isConnecting: false);
+      return;
+    }
           
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        
-        List<GemAlarm> fetchedAlarms = [];
-        if (data['alarms'] != null) {
-          fetchedAlarms = (data['alarms'] as List)
-              .map((item) => GemAlarm.fromJson(item))
-              .toList();
+    try {
+      final Map<String, dynamic> data = json.decode(response.body);
+      
+      // Auto-update saved IP if the device returned a different valid IP on the home Wi-Fi network
+      String resolvedIp = state.ipAddress;
+      if (data['ip'] != null && data['ip'] != '0.0.0.0' && data['ip'] != '') {
+        resolvedIp = data['ip'];
+        if (resolvedIp != state.ipAddress) {
+          if (kDebugMode) print("Device IP dynamically resolved: $resolvedIp");
+          state = state.copyWith(ipAddress: resolvedIp);
+          _updateSavedIp(resolvedIp);
         }
+      }
 
-        state = state.copyWith(
-          deviceName: data['deviceName'] ?? state.deviceName,
-          userName: data['userName'] ?? state.userName,
-          timezoneLabel: data['timezoneLabel'] ?? state.timezoneLabel,
-          timezoneOffsetMinutes: data['timezoneOffsetMinutes'] ?? state.timezoneOffsetMinutes,
-          wifiEnabled: data['wifiEnabled'] ?? state.wifiEnabled,
-          wifiConnected: data['wifiConnected'] ?? state.wifiConnected,
-          setupComplete: data['setupComplete'] ?? state.setupComplete,
-          hotspotEnabled: data['hotspotEnabled'] ?? state.hotspotEnabled,
-          hotspotActive: data['hotspotActive'] ?? state.hotspotActive,
-          batteryPercent: data['batteryPercent'] ?? state.batteryPercent,
-          batteryVoltage: (data['batteryVoltage'] as num?)?.toDouble() ?? state.batteryVoltage,
-          ldrRaw: data['ldrRaw'] ?? state.ldrRaw,
-          lampState: data['lampState'] ?? state.lampState,
-          lampMode: data['lampMode'] ?? state.lampMode,
-          lampBrightness: data['lampBrightness'] ?? state.lampBrightness,
-          monitoringEnabled: data['monitoringEnabled'] ?? state.monitoringEnabled,
-          faceMode: data['faceMode'] ?? state.faceMode,
-          timeValid: data['timeValid'] ?? state.timeValid,
-          alarms: fetchedAlarms.isNotEmpty ? fetchedAlarms : state.alarms,
-          isConnected: true,
-          isConnecting: false,
+      List<GemAlarm> fetchedAlarms = [];
+      if (data['alarms'] != null) {
+        fetchedAlarms = (data['alarms'] as List)
+            .map((item) => GemAlarm.fromJson(item))
+            .toList();
+      }
+
+      final bool isScanningOnHardware = data['faceMode'] == 7;
+      final int deviceBpm = data['bpm'] ?? state.bpm;
+      
+      if (state.isHeartScanning && !isScanningOnHardware) {
+        ref.read(timelineProvider.notifier).addLog(
+          type: 'heart',
+          title: 'Pulse Scan Complete',
+          message: 'Measured $deviceBpm BPM.'
         );
+        state = state.copyWith(
+          lastNotificationMessage: '❤️ Heart Rate Scan Completed: $deviceBpm BPM',
+        );
+      }
 
-        if (data['faceMode'] == 8 && state.activeAlarmIndex == 255) {
-          state = state.copyWith(
-            activeAlarmIndex: 0,
-            lastNotificationMessage: '🚨 Alarm Triggered: Time to wake up!',
-          );
-          ref.read(timelineProvider.notifier).addLog(
-            type: 'alarm',
-            title: 'Alarm Triggered!',
-            message: 'Physical device buzzer and OLED alert are active.',
-          );
-        } else if (data['faceMode'] != 8 && state.activeAlarmIndex != 255) {
-          state = state.copyWith(activeAlarmIndex: 255);
-        }
+      state = state.copyWith(
+        deviceName: data['deviceName'] ?? state.deviceName,
+        userName: data['userName'] ?? state.userName,
+        timezoneLabel: data['timezoneLabel'] ?? state.timezoneLabel,
+        timezoneOffsetMinutes: data['timezoneOffsetMinutes'] ?? state.timezoneOffsetMinutes,
+        wifiEnabled: data['wifiEnabled'] ?? state.wifiEnabled,
+        wifiConnected: data['wifiConnected'] ?? state.wifiConnected,
+        setupComplete: data['setupComplete'] ?? state.setupComplete,
+        hotspotEnabled: data['hotspotEnabled'] ?? state.hotspotEnabled,
+        hotspotActive: data['hotspotActive'] ?? state.hotspotActive,
+        batteryPercent: data['batteryPercent'] ?? state.batteryPercent,
+        batteryVoltage: (data['batteryVoltage'] as num?)?.toDouble() ?? state.batteryVoltage,
+        ldrRaw: data['ldrRaw'] ?? state.ldrRaw,
+        lampState: data['lampState'] ?? state.lampState,
+        lampMode: data['lampMode'] ?? state.lampMode,
+        lampBrightness: data['lampBrightness'] ?? state.lampBrightness,
+        monitoringEnabled: data['monitoringEnabled'] ?? state.monitoringEnabled,
+        faceMode: data['faceMode'] ?? state.faceMode,
+        timeValid: data['timeValid'] ?? state.timeValid,
+        alarms: fetchedAlarms.isNotEmpty ? fetchedAlarms : state.alarms,
+        isConnected: true,
+        isConnecting: false,
+        isHeartScanning: isScanningOnHardware,
+        bpm: deviceBpm,
+      );
+
+      if (data['faceMode'] == 8 && state.activeAlarmIndex == 255) {
+        state = state.copyWith(
+          activeAlarmIndex: 0,
+          lastNotificationMessage: '🚨 Alarm Triggered: Time to wake up!',
+        );
+        ref.read(timelineProvider.notifier).addLog(
+          type: 'alarm',
+          title: 'Alarm Triggered!',
+          message: 'Physical device buzzer and OLED alert are active.',
+        );
+      } else if (data['faceMode'] != 8 && state.activeAlarmIndex != 255) {
+        state = state.copyWith(activeAlarmIndex: 255);
+      }
+
+      if (isScanningOnHardware) {
+        Timer(const Duration(seconds: 1), () => fetchDeviceState());
       }
     } catch (e) {
       if (kDebugMode) {
-        print("Polling failed: $e. Falling back to simulated mode.");
+        print("Parsing state failed: $e.");
       }
       state = state.copyWith(isConnected: false, isConnecting: false);
     }
@@ -417,7 +478,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     if (ledAutoOffMinutes != null) params['ledAutoOffMinutes'] = ledAutoOffMinutes.toString();
 
     final activeAlarms = alarms ?? state.alarms;
-    for (int i = 0; i < activeAlarms.length && i < 3; i++) {
+    for (int i = 0; i < activeAlarms.length && i < 6; i++) {
       final alarm = activeAlarms[i];
       params['alarm${i}_hour'] = alarm.hour.toString();
       params['alarm${i}_minute'] = alarm.minute.toString();
@@ -513,49 +574,110 @@ class DeviceNotifier extends Notifier<DeviceState> {
   Future<void> startHeartScan() async {
     if (state.isHeartScanning) return;
     
-    state = state.copyWith(
-      isHeartScanning: true,
-      faceMode: 7, 
-      bpm: 0
-    );
+    if (state.isSimulated) {
+      state = state.copyWith(
+        isHeartScanning: true,
+        faceMode: 7, 
+        bpm: 0
+      );
 
-    ref.read(timelineProvider.notifier).addLog(
-      type: 'system',
-      title: 'Heart Scan Started',
-      message: 'Keep finger on pulse sensor.'
-    );
+      ref.read(timelineProvider.notifier).addLog(
+        type: 'system',
+        title: 'Heart Scan Started',
+        message: 'Keep finger on pulse sensor.'
+      );
 
-    int tick = 0;
-    Timer.periodic(const Duration(milliseconds: 300), (timer) {
-      if (!state.isHeartScanning) {
-        timer.cancel();
-        return;
+      int tick = 0;
+      Timer.periodic(const Duration(milliseconds: 300), (timer) {
+        if (!state.isHeartScanning) {
+          timer.cancel();
+          return;
+        }
+
+        tick++;
+        if (tick < 10) {
+          final nextBpm = 60 + math.Random().nextInt(30);
+          state = state.copyWith(bpm: nextBpm);
+        } else {
+          timer.cancel();
+          final finalBpm = 72 + math.Random().nextInt(18); 
+          state = state.copyWith(
+            isHeartScanning: false,
+            faceMode: 0, 
+            bpm: finalBpm
+          );
+          
+          ref.read(timelineProvider.notifier).addLog(
+            type: 'heart',
+            title: 'Pulse Scan Complete',
+            message: 'Measured $finalBpm BPM.'
+          );
+
+          state = state.copyWith(
+            lastNotificationMessage: '❤️ Heart Rate Scan Completed: $finalBpm BPM',
+          );
+        }
+      });
+    } else {
+      state = state.copyWith(
+        isHeartScanning: true,
+        faceMode: 7, 
+        bpm: 0
+      );
+
+      ref.read(timelineProvider.notifier).addLog(
+        type: 'system',
+        title: 'Heart Scan Started',
+        message: 'Keep finger on pulse sensor.'
+      );
+
+      try {
+        final response = await http.get(Uri.parse('http://${state.ipAddress}/api/heart?action=start'))
+            .timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          fetchDeviceState();
+        }
+      } catch (e) {
+        if (kDebugMode) print("Start heart scan failed: $e");
       }
+    }
+  }
 
-      tick++;
-      if (tick < 10) {
-        final nextBpm = 60 + math.Random().nextInt(30);
-        state = state.copyWith(bpm: nextBpm);
-      } else {
-        timer.cancel();
-        final finalBpm = 72 + math.Random().nextInt(18); 
-        state = state.copyWith(
-          isHeartScanning: false,
-          faceMode: 0, 
-          bpm: finalBpm
-        );
-        
-        ref.read(timelineProvider.notifier).addLog(
-          type: 'heart',
-          title: 'Pulse Scan Complete',
-          message: 'Measured $finalBpm BPM.'
-        );
+  Future<void> stopHeartScan() async {
+    if (!state.isHeartScanning) return;
 
-        state = state.copyWith(
-          lastNotificationMessage: '❤️ Heart Rate Scan Completed: $finalBpm BPM',
-        );
+    if (state.isSimulated) {
+      state = state.copyWith(
+        isHeartScanning: false,
+        faceMode: 0,
+      );
+      ref.read(timelineProvider.notifier).addLog(
+        type: 'system',
+        title: 'Heart Scan Stopped',
+        message: 'Scan cancelled by user.'
+      );
+    } else {
+      state = state.copyWith(
+        isHeartScanning: false,
+        faceMode: 0,
+      );
+
+      ref.read(timelineProvider.notifier).addLog(
+        type: 'system',
+        title: 'Heart Scan Stopped',
+        message: 'Scan cancelled by user.'
+      );
+
+      try {
+        final response = await http.get(Uri.parse('http://${state.ipAddress}/api/heart?action=stop'))
+            .timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          fetchDeviceState();
+        }
+      } catch (e) {
+        if (kDebugMode) print("Stop heart scan failed: $e");
       }
-    });
+    }
   }
 
   void dismissAlarm() {
