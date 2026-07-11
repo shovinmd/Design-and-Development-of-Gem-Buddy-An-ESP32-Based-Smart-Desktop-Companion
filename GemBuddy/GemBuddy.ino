@@ -681,19 +681,21 @@ void updateHeartMode() {
     return;
   }
 
+  if (rt.pulseBaseline <= 1.0f) {
+    rt.pulseBaseline = raw;
+  }
+
+  // Proven signal processing logic from Pulse_Test.ino
+  rt.pulseBaseline = rt.pulseBaseline * 0.98f + raw * 0.02f;
+  float threshold = rt.pulseBaseline + 25.0f; // absolute offset for high-sensitivity pulse tracking
+
   if (!rt.pulseCalibrated) {
-    // Stabilize the baseline faster during the calibration phase (10% weight)
-    rt.pulseBaseline = rt.pulseBaseline * 0.90f + raw * 0.10f;
     if (now - rt.fingerDetectedAt >= 2500) {
       rt.pulseCalibrated = true;
       rt.lastBeatMs = now;
     }
     return;
   }
-
-  // Proven signal processing logic from Pulse_Test.ino
-  rt.pulseBaseline = rt.pulseBaseline * 0.98f + raw * 0.02f;
-  float threshold = rt.pulseBaseline + 25.0f; // absolute offset for high-sensitivity pulse tracking
 
   // If no beat detected for 3.5 seconds, reset BPM to 0 (flat/invalid signal)
   if (rt.lastBeatMs > 0 && (now - rt.lastBeatMs > 3500)) {
