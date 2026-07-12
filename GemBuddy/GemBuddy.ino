@@ -1811,9 +1811,18 @@ void applySettingsFromRequest() {
   if (server.hasArg("tzOffset")) settings.timezoneOffsetMinutes = server.arg("tzOffset").toInt();
   if (server.hasArg("wifiSsid")) copyText(settings.wifiSsid, sizeof(settings.wifiSsid), server.arg("wifiSsid").c_str());
   if (server.hasArg("wifiPass")) copyText(settings.wifiPass, sizeof(settings.wifiPass), server.arg("wifiPass").c_str());
-  settings.wifiEnabled = server.hasArg("wifiEnabled") ? argTrue(server.arg("wifiEnabled")) : false;
-  settings.hotspotEnabled = server.hasArg("hotspotEnabled") ? argTrue(server.arg("hotspotEnabled")) : false;
-  settings.monitoringEnabled = server.hasArg("monitoringEnabled") ? argTrue(server.arg("monitoringEnabled")) : false;
+  if (server.hasArg("epoch")) {
+    // API partial update from App
+    if (server.hasArg("wifiEnabled")) settings.wifiEnabled = argTrue(server.arg("wifiEnabled"));
+    if (server.hasArg("hotspotEnabled")) settings.hotspotEnabled = argTrue(server.arg("hotspotEnabled"));
+    if (server.hasArg("monitoringEnabled")) settings.monitoringEnabled = argTrue(server.arg("monitoringEnabled"));
+  } else {
+    // Full form submission from Web UI (unchecked boxes are omitted)
+    settings.wifiEnabled = server.hasArg("wifiEnabled") ? argTrue(server.arg("wifiEnabled")) : false;
+    settings.hotspotEnabled = server.hasArg("hotspotEnabled") ? argTrue(server.arg("hotspotEnabled")) : false;
+    settings.monitoringEnabled = server.hasArg("monitoringEnabled") ? argTrue(server.arg("monitoringEnabled")) : false;
+  }
+  
   if (server.hasArg("webhook")) copyText(settings.cloudWebhook, sizeof(settings.cloudWebhook), server.arg("webhook").c_str());
 
   if (settings.monitoringEnabled && (!oldMonitoring || !settings.wifiEnabled)) {
