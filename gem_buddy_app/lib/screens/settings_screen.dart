@@ -239,6 +239,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ? null 
                               : () async {
                                   final prefs = await SharedPreferences.getInstance();
+                                  if (_ipController.text.trim().isNotEmpty) {
+                                    deviceNotifier.updateIpAddress(_ipController.text.trim());
+                                  }
                                   if (_ssidController.text.trim().isNotEmpty) {
                                     await prefs.setString('saved_wifi_ssid', _ssidController.text.trim());
                                     await prefs.setString('saved_wifi_pass', _passController.text.trim());
@@ -793,6 +796,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Save to user preferences provider
     await settingsNotifier.updateUserName(_nameController.text.trim());
     await settingsNotifier.updateDeviceNickname(_nicknameController.text.trim());
+
+    if (_ipController.text.trim().isNotEmpty) {
+      deviceNotifier.updateIpAddress(_ipController.text.trim());
+    }
 
     // Save WiFi locally
     final prefs = await SharedPreferences.getInstance();
