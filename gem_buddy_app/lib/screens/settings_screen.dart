@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/colors.dart';
 import '../theme/glass_styles.dart';
 import '../widgets/glass_card.dart';
@@ -20,6 +21,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isUploading = false;
   double _uploadProgress = 0.0;
   String _uploadStatus = '';
+  bool _isSavingAndReflashing = false;
 
   late TextEditingController _nameController;
   late TextEditingController _nicknameController;
@@ -45,13 +47,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _nameController = TextEditingController(text: userSettings.userName);
     _nicknameController = TextEditingController(text: userSettings.deviceNickname);
     _ipController = TextEditingController(text: deviceState.ipAddress);
-    _ssidController = TextEditingController(text: deviceState.wifiEnabled ? 'MyHomeWifi' : '');
+    _ssidController = TextEditingController();
     _passController = TextEditingController();
     _brokerController = TextEditingController(text: deviceState.brokerIpAddress);
 
     _selectedTimezone = _timezones.any((tz) => tz['label'] == deviceState.timezoneLabel)
         ? deviceState.timezoneLabel
         : 'Asia/Kolkata';
+        
+    _loadWifiSettings();
+  }
+
+  Future<void> _loadWifiSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _ssidController.text = prefs.getString('saved_wifi_ssid') ?? '';
+        _passController.text = prefs.getString('saved_wifi_pass') ?? '';
+      });
+    }
   }
 
   @override
@@ -224,9 +238,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           onPressed: deviceState.isSimulated 
                               ? null 
                               : () async {
+                                  final prefs = await SharedPreferences.getInstance();
+                                  if (_ssidController.text.trim().isNotEmpty) {
+                                    await prefs.setString('saved_wifi_ssid', _ssidController.text.trim());
+                                    await prefs.setString('saved_wifi_pass', _passController.text.trim());
+                                  }
+                                  
                                   final success = await deviceNotifier.saveSettings(
-                                    wifiSsid: _ssidController.text,
-                                    wifiPass: _passController.text,
+                                    wifiSsid: _ssidController.text.trim(),
+                                    wifiPass: _passController.text.trim(),
                                     wifiEnabled: true,
                                   );
                                   if (mounted) {
@@ -324,7 +344,71 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 5. FIRMWARE & UPDATES (OTA)
+              // 5. SAVE ALL & REFLASH CARD
+              FadeSlideTransition(
+                delay: const Duration(milliseconds: 350),
+                child: GlassCard(
+                  borderColor: _isSavingAndReflashing ? const Color(0xFFFF6B35).withValues(alpha: 0.6) : null,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.backup_rounded, color: Color(0xFFFF6B35), size: 22),
+                          SizedBox(width: 10),
+                          Text('Save All & Reflash', style: TextStyle(color: GemColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Backs up your profile, WiFi, alarms, and all settings to the device, then immediately flashes the latest firmware. Your data is safe after reboot.',
+                        style: TextStyle(color: GemColors.textSecondary, fontSize: 12, height: 1.4),
+                      ),
+                      const SizedBox(height: 14),
+                      if (_isSavingAndReflashing) ...[
+                        LinearProgressIndicator(
+                          value: _uploadProgress > 0 ? _uploadProgress : null,
+                          backgroundColor: Colors.black.withValues(alpha: 0.08),
+                          color: const Color(0xFFFF6B35),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(_uploadStatus, style: const TextStyle(color: GemColors.textSecondary, fontSize: 12)),
+                            if (_uploadProgress > 0)
+                              Text('${(_uploadProgress * 100).toStringAsFixed(0)}%', style: const TextStyle(color: GemColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ] else
+                        SizedBox(
+                          width: double.infinity,
+                          height: 46,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF6B35),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            onPressed: _saveAndReflash,
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.flash_on_rounded, size: 20),
+                                SizedBox(width: 8),
+                                Text('Save Settings & Reflash Firmware', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 6. FIRMWARE & UPDATES (OTA)
               FadeSlideTransition(
                 delay: const Duration(milliseconds: 400),
                 child: GlassCard(
@@ -573,6 +657,134 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Saves ALL current settings to the device first, then flashes latest GitHub firmware.
+  /// This guarantees settings survive the reflash and reboot.
+  Future<void> _saveAndReflash() async {
+    const repo = 'shovinmd/Design-and-Development-of-Gem-Buddy-An-ESP32-Based-Smart-Desktop-Companion';
+
+    setState(() {
+      _isSavingAndReflashing = true;
+      _uploadProgress = 0.0;
+      _uploadStatus = 'Step 1/3 — Saving all settings to device...';
+    });
+
+    // ── Step 1: Save everything ───────────────────────────────────────────
+    try {
+      final deviceNotifier = ref.read(deviceProvider.notifier);
+      final settingsNotifier = ref.read(settingsProvider.notifier);
+      final deviceState = ref.read(deviceProvider);
+      final tzMatch = _timezones.firstWhere(
+        (tz) => tz['label'] == _selectedTimezone,
+        orElse: () => {'label': 'Asia/Kolkata', 'offset': 330},
+      );
+
+      await settingsNotifier.updateUserName(_nameController.text.trim());
+      await settingsNotifier.updateDeviceNickname(_nicknameController.text.trim());
+
+      await deviceNotifier.saveSettings(
+        userName: _nameController.text.trim(),
+        deviceName: _nicknameController.text.trim(),
+        timezoneLabel: tzMatch['label'] as String,
+        timezoneOffsetMinutes: tzMatch['offset'] as int,
+        wifiSsid: _ssidController.text.trim().isNotEmpty ? _ssidController.text.trim() : null,
+        wifiPass: _passController.text.isNotEmpty ? _passController.text : null,
+        wifiEnabled: deviceState.wifiEnabled,
+        alarms: deviceState.alarms,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Settings save failed: $e'), backgroundColor: GemColors.statusAlert),
+        );
+      }
+      setState(() { _isSavingAndReflashing = false; });
+      return;
+    }
+
+    // ── Step 2: Fetch latest release from GitHub ──────────────────────────
+    setState(() { _uploadStatus = 'Step 2/3 — Checking latest firmware release...'; });
+    try {
+      final releaseResponse = await http.get(
+        Uri.parse('https://api.github.com/repos/$repo/releases/latest'),
+      ).timeout(const Duration(seconds: 10));
+
+      if (releaseResponse.statusCode != 200) {
+        throw Exception('GitHub returned ${releaseResponse.statusCode}');
+      }
+
+      final data = json.decode(releaseResponse.body);
+      final assets = data['assets'] as List;
+      dynamic binaryAsset;
+      for (final asset in assets) {
+        if ((asset['name'] as String).endsWith('.bin')) {
+          binaryAsset = asset;
+          break;
+        }
+      }
+
+      if (binaryAsset == null) {
+        throw Exception('No .bin firmware file found in the latest release.');
+      }
+
+      final downloadUrl = binaryAsset['browser_download_url'] as String;
+      final filename    = binaryAsset['name'] as String;
+      final tagName     = data['tag_name'] as String;
+
+      // ── Step 3: Download & flash ────────────────────────────────────────
+      setState(() { _uploadStatus = 'Step 3/3 — Downloading $filename ($tagName)...'; });
+
+      final firmwareResponse = await http.get(Uri.parse(downloadUrl))
+          .timeout(const Duration(seconds: 120));
+
+      if (firmwareResponse.statusCode != 200) {
+        throw Exception('Download failed: HTTP ${firmwareResponse.statusCode}');
+      }
+
+      final bytes = firmwareResponse.bodyBytes;
+      setState(() { _uploadStatus = 'Flashing firmware to GEM device...'; });
+
+      final deviceNotifier = ref.read(deviceProvider.notifier);
+      final success = await deviceNotifier.uploadFirmware(
+        bytes,
+        filename,
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() {
+              _uploadProgress = progress;
+              _uploadStatus = progress >= 1.0
+                  ? '✅ Flash done — GEM is rebooting with your settings!'
+                  : 'Flashing: ${(progress * 100).toStringAsFixed(0)}% complete...';
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() { _isSavingAndReflashing = false; _uploadProgress = 0.0; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? '🚀 Done! GEM reflashed with $tagName and all your settings preserved.'
+                : '⚠️ Firmware flash failed. Settings were saved — try flashing again.'),
+            backgroundColor: success ? GemColors.statusActive : GemColors.statusAlert,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _isSavingAndReflashing = false; _uploadProgress = 0.0; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Reflash failed: $e\n(Settings were already saved to the device.)'),
+            backgroundColor: GemColors.statusAlert,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _saveProfileSettings() async {
     final settingsNotifier = ref.read(settingsProvider.notifier);
     final deviceNotifier = ref.read(deviceProvider.notifier);
@@ -582,18 +794,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await settingsNotifier.updateUserName(_nameController.text.trim());
     await settingsNotifier.updateDeviceNickname(_nicknameController.text.trim());
 
+    // Save WiFi locally
+    final prefs = await SharedPreferences.getInstance();
+    if (_ssidController.text.trim().isNotEmpty) {
+      await prefs.setString('saved_wifi_ssid', _ssidController.text.trim());
+      await prefs.setString('saved_wifi_pass', _passController.text.trim());
+    }
+
     // Save to device provider & sync with ESP32
     final success = await deviceNotifier.saveSettings(
       userName: _nameController.text.trim(),
       deviceName: _nicknameController.text.trim(),
       timezoneLabel: tzMatch['label'] as String,
       timezoneOffsetMinutes: tzMatch['offset'] as int,
+      wifiSsid: _ssidController.text.trim().isNotEmpty ? _ssidController.text.trim() : null,
+      wifiPass: _passController.text.trim().isNotEmpty ? _passController.text.trim() : null,
     );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? 'Profile settings synced successfully!' : 'Profile settings saved locally.'),
+          content: Text(success ? 'Profile & WiFi settings synced!' : 'Profile settings saved locally.'),
           backgroundColor: success ? GemColors.statusActive : GemColors.statusWarning,
         ),
       );
