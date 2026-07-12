@@ -474,9 +474,18 @@ void refreshSensors(bool force = false) {
   uint32_t ldrInterval = settings.monitoringEnabled ? 1500UL : LDR_SAMPLE_MS;
   if (force || now - rt.lastLdrRead >= ldrInterval) {
     uint16_t oldLdr = rt.ldrRaw;
+    bool wasDark = rt.ambientDark;
     rt.lastLdrRead = now;
     rt.ldrRaw = readLdrRaw();
     rt.ambientDark = rt.ldrRaw < 1600;
+
+    if (!force && !wasDark && rt.ambientDark) {
+      if (!settings.lampState) {
+        settings.lampState = true;
+        settings.lampMode = LAMP_STATIC;
+        saveSettings();
+      }
+    }
 
     // Detect sudden shift (shadow or flash)
     if (!force && oldLdr > 0 && settings.monitoringEnabled) {
@@ -857,6 +866,13 @@ void activateMenuItem() {
       }
       break;
     case 3:
+      if (!settings.monitoringEnabled && WiFi.status() != WL_CONNECTED) {
+        tone(PIN_BUZZER, 200, 150);
+        delay(200);
+        tone(PIN_BUZZER, 200, 150);
+        showInfoPage(); // Show network status screen
+        break;
+      }
       settings.monitoringEnabled = !settings.monitoringEnabled;
       if (settings.monitoringEnabled) {
         settings.wifiEnabled = true;
@@ -1212,7 +1228,9 @@ void drawFaceScreen() {
     u8g2.setDrawColor(1);
     
     char msg[32] = "";
-    if (rt.petActive) {
+    if (settings.monitoringEnabled) {
+      strcpy(msg, "PLEASE DON'T TOUCH ME!");
+    } else if (rt.petActive) {
       snprintf(msg, sizeof(msg), "Hello %s!", settings.userName);
     } else {
       switch (rt.greetingIndex) {
@@ -1338,9 +1356,15 @@ void updateFaceAnimation() {
   }
 
   // Update Picaio mood mapping
-  if (isNightTime()) {
+  if (settings.monitoringEnabled) {
+    rt.picaioMood = 3; // Angry / Alert
+    rt.faceMode = FACE_DAY; // Ensure eyes are visible
+  } else if (isNightTime() && rt.ambientDark) {
     rt.picaioMood = 2; // Sleeping / Closed
     rt.faceMode = FACE_NIGHT;
+  } else if (isNightTime() && !rt.ambientDark) {
+    rt.picaioMood = 4; // Sad / Tired
+    rt.faceMode = FACE_EVENING;
   } else {
     switch (rt.faceMode) {
       case FACE_PET:

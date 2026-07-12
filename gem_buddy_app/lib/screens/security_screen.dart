@@ -93,6 +93,15 @@ class SecurityScreen extends ConsumerWidget {
                             inactiveThumbColor: GemColors.textSecondary,
                             inactiveTrackColor: Colors.black.withValues(alpha: 0.05),
                             onChanged: (val) {
+                              if (val && !deviceState.deviceOnline && !deviceState.isSimulated) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Cannot enable Guard Mode. Device is offline!'),
+                                    backgroundColor: GemColors.statusAlert,
+                                  )
+                                );
+                                return;
+                              }
                               deviceNotifier.toggleBrokerGuardMode(val);
                             },
                           ),
