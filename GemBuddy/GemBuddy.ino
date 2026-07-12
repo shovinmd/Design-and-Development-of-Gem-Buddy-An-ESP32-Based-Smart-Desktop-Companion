@@ -109,6 +109,9 @@ struct RuntimeState {
   bool fingerPresent = false;
   uint32_t fingerDetectedAt = 0;
   bool pulseCalibrated = false;
+  uint8_t bpmValidCount = 0;
+  bool alarmMissed = false;
+  uint8_t missedAlarmIndex = 255;
   uint32_t lastAppRequestAt = 0;
   uint32_t lastGuardPingMs = 0;  // last time we POSTed a keepalive ping
 
@@ -632,8 +635,15 @@ void updateAlarmRuntime() {
   uint32_t now = millis();
   if (now >= rt.alarmUntil) {
     rt.alarmActive = false;
-    rt.alarmIndex = 255;
     noTone(PIN_BUZZER);
+    if (rt.alarmIndex != 254) {
+      rt.alarmMissed = true;
+      rt.missedAlarmIndex = rt.alarmIndex;
+    } else {
+      rt.alarmIndex = 255;
+      rt.faceMode = FACE_DAY;
+      setLampOff();
+    }
     return;
   }
 
@@ -649,9 +659,9 @@ void updateAlarmRuntime() {
       note = (rt.alarmToneStep % 2 == 0) ? 2000 : 1000;
       rt.alarmToneStepAt = now + 150;
     } else if (hr >= 5 && hr < 12) {
-      // Morning (Wake Up): Cheerful rising sunrise arpeggio
-      static const uint16_t morningNotes[] = { 523, 587, 659, 698, 784, 880, 988, 1047, 988, 880, 784, 698, 659, 587, 523, 0 };
-      note = morningNotes[rt.alarmToneStep % 16];
+      // Morning (Wake Up): Bird chirp (fast high pitch trills)
+      static const uint16_t birdNotes[] = { 2500, 3200, 2500, 0, 0, 2800, 3500, 0, 0, 0 };
+      note = birdNotes[rt.alarmToneStep % 10];
     } else if (hr >= 12 && hr < 17) {
       // Afternoon Alert: Bouncy, energetic chime
       static const uint16_t afternoonNotes[] = { 880, 0, 880, 0, 988, 0, 988, 0, 1175, 0, 1318, 0, 1175, 988, 880, 0 };
@@ -667,11 +677,20 @@ void updateAlarmRuntime() {
     }
 
     rt.alarmToneStep++;
-    rt.alarmToneStepAt = now + 220;
+    if (rt.alarmIndex != 254 && hr >= 5 && hr < 12) {
+      rt.alarmToneStepAt = now + 80; // Fast for birds
+    } else {
+      rt.alarmToneStepAt = now + 220;
+    }
+    
     if (note == 0) {
       noTone(PIN_BUZZER);
     } else {
-      tone(PIN_BUZZER, note, 160);
+      if (rt.alarmIndex != 254 && hr >= 5 && hr < 12) {
+        tone(PIN_BUZZER, note, 60);
+      } else {
+        tone(PIN_BUZZER, note, 160);
+      }
     }
   }
 }
@@ -774,6 +793,13 @@ void updateHeartMode() {
       // Only accept physiologically plausible BPM (40–180)
       if (bpmCalc >= 40 && bpmCalc <= 180) {
         rt.bpm = (uint16_t)bpmCalc;
+        rt.bpmValidCount++;
+        if (rt.bpmValidCount == 4) {
+          triggerCloudEvent("heart-scan"); // Updates the app!
+          rt.heartModeUntil = now + 3000; // Hold the value on screen for 3s then auto exit
+        }
+      } else {
+        rt.bpmValidCount = 0;
       }
     }
     rt.lastBeatMs = now;
@@ -1075,12 +1101,17 @@ void drawFaceScreen() {
   if (rt.faceMode == FACE_ALARM) {
     u8g2.drawRFrame(4, 4, 120, 56, 8);
     u8g2.setFont(u8g2_font_6x10_tf);
-    drawCentered(16, "🚨 REMINDER 🚨", u8g2_font_6x10_tf);
+    if (rt.alarmActive) {
+      drawCentered(16, "🚨 REMINDER 🚨", u8g2_font_6x10_tf);
+    } else if (rt.alarmMissed) {
+      drawCentered(16, "🚨 MISSED 🚨", u8g2_font_6x10_tf);
+    }
     u8g2.drawHLine(12, 20, 104);
     
     char alarmName[24] = "Alarm";
-    if (rt.alarmIndex < 3) {
-      strcpy(alarmName, settings.alarms[rt.alarmIndex].name);
+    uint8_t dispIndex = rt.alarmActive ? rt.alarmIndex : rt.missedAlarmIndex;
+    if (dispIndex < 3) {
+      strcpy(alarmName, settings.alarms[dispIndex].name);
     }
     drawCentered(36, alarmName, u8g2_font_7x14_tf);
     
@@ -1453,32 +1484,7 @@ void handleTouchInput() {
   uint32_t now = millis();
   bool pressed = digitalRead(PIN_TOUCH) == HIGH;
 
-  // Active alarm dismissal via touch press
-  if (rt.alarmActive) {
-    if (pressed && !rt.touch.pressed) {
-      Serial.println("Alarm dismissed by touch");
-      rt.alarmActive = false;
-      rt.alarmIndex = 255;
-      noTone(PIN_BUZZER);
-      
-      // Double click confirmation sound
-      tone(PIN_BUZZER, 1000, 100);
-      delay(120);
-      tone(PIN_BUZZER, 1500, 150);
-      
-      rt.touch.pressed = true;
-      rt.touch.pressedAt = now;
-      rt.touch.longHandled = true; // prevent long touch triggers
-      
-      rt.faceMode = FACE_DAY;
-      setLampOff();
-      saveSettings();
-    }
-    if (!pressed && rt.touch.pressed) {
-      rt.touch.pressed = false;
-    }
-    return;
-  }
+  // Alarm dismissal moved to long press only
 
   // Track touch press transition
   if (pressed && !rt.touch.pressed) {
@@ -1488,7 +1494,7 @@ void handleTouchInput() {
     rt.touch.pressedAt = now;
     rt.touch.longHandled = false;
     if (settings.monitoringEnabled) {
-      triggerSecurityAlarm("touch-down");
+      triggerSecurityAlarm("touch-detected");
     } else {
       triggerCloudEvent("touch-down");
     }
@@ -1499,6 +1505,19 @@ void handleTouchInput() {
     rt.touch.longHandled = true;
     Serial.println("Long touch detected");
     tone(PIN_BUZZER, 2400, 150);
+
+    if (rt.alarmActive || (rt.faceMode == FACE_ALARM && rt.alarmMissed)) {
+      rt.alarmActive = false;
+      rt.alarmMissed = false;
+      rt.alarmIndex = 255;
+      rt.missedAlarmIndex = 255;
+      noTone(PIN_BUZZER);
+      rt.faceMode = FACE_DAY;
+      setLampOff();
+      saveSettings();
+      triggerCloudEvent("alarm-dismissed");
+      return;
+    }
 
     // If inside a sub-mode page (heart rate, info, wifi setup), long press exits to default face
     if (rt.faceMode == FACE_HEART || rt.faceMode == FACE_INFO || rt.faceMode == FACE_WIFI_SETUP) {

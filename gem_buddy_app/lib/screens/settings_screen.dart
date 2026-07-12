@@ -814,14 +814,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       deviceName: _nicknameController.text.trim(),
       timezoneLabel: tzMatch['label'] as String,
       timezoneOffsetMinutes: tzMatch['offset'] as int,
-      wifiSsid: _ssidController.text.trim().isNotEmpty ? _ssidController.text.trim() : null,
-      wifiPass: _passController.text.trim().isNotEmpty ? _passController.text.trim() : null,
     );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? 'Profile & WiFi settings synced!' : 'Profile settings saved locally.'),
+          content: Text(success ? 'Profile settings synced locally and with device!' : 'Profile settings saved locally.'),
           backgroundColor: success ? GemColors.statusActive : GemColors.statusWarning,
         ),
       );
