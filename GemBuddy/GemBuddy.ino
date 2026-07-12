@@ -1248,10 +1248,10 @@ void drawFaceScreen() {
           snprintf(msg, sizeof(msg), "Hello %s!", settings.userName);
           break;
         case 1:
-          strcpy(msg, "How are you?");
+          snprintf(msg, sizeof(msg), "Hi %s, keep smiling :)", settings.userName);
           break;
         case 2:
-          strcpy(msg, "What's going on?");
+          snprintf(msg, sizeof(msg), "%s, you're awesome!", settings.userName);
           break;
         case 3: {
           char tBuf[16];
@@ -1396,6 +1396,7 @@ void updateFaceAnimation() {
       case FACE_DAY:
       default:
         rt.picaioMood = 0; // Neutral
+        rt.faceMode = FACE_DAY;
         break;
     }
   }
@@ -1478,7 +1479,13 @@ void updatePeriodicGreeting() {
     rt.picaioXp = 30; // Force look right
     if (now >= rt.greetingAnimTimer) {
       rt.greetingAnimStep = 3;
+      rt.greetingAnimTimer = now + 1500;
       rt.picaioXp = 16; // Center
+    }
+  } else if (rt.greetingAnimStep == 3) {
+    rt.picaioXp = 16; // Force look center
+    if (now >= rt.greetingAnimTimer) {
+      rt.greetingAnimStep = 4;
       
       // Trigger Bubble
       rt.lastGreetingAt = now;
@@ -1486,7 +1493,7 @@ void updatePeriodicGreeting() {
       rt.greetingBubbleUntil = now + 4000;
       rt.greetingIndex = random(0, 5);
     }
-  } else if (rt.greetingAnimStep == 3) {
+  } else if (rt.greetingAnimStep == 4) {
     if (rt.greetingBubbleActive && now >= rt.greetingBubbleUntil) {
       rt.greetingBubbleActive = false;
       rt.greetingAnimStep = 0;
