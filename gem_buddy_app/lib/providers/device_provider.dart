@@ -246,6 +246,12 @@ class DeviceNotifier extends Notifier<DeviceState> {
         brokerIpAddress: savedBrokerIp ?? state.brokerIpAddress,
         ipAddress: savedDeviceIp ?? state.ipAddress,
         alarms: localAlarms.isNotEmpty ? localAlarms : state.alarms,
+        lampMode: prefs.getInt('saved_lampMode') ?? state.lampMode,
+        lampBrightness: prefs.getInt('saved_lampBrightness') ?? state.lampBrightness,
+        lampState: prefs.getBool('saved_lampState') ?? state.lampState,
+        ledAutoOffMinutes: prefs.getInt('saved_ledAutoOff') ?? state.ledAutoOffMinutes,
+        hotspotEnabled: prefs.getBool('saved_hotspotEnabled') ?? state.hotspotEnabled,
+        monitoringEnabled: prefs.getBool('saved_monitoringEnabled') ?? state.monitoringEnabled,
       );
       
       final brokerToConnect = savedBrokerIp ?? state.brokerIpAddress;
@@ -509,6 +515,14 @@ class DeviceNotifier extends Notifier<DeviceState> {
     if (lampBrightness != null) params['lampBrightness'] = lampBrightness.toString();
     if (lampState != null) params['lampState'] = lampState ? 'true' : 'false';
     if (ledAutoOffMinutes != null) params['ledAutoOffMinutes'] = ledAutoOffMinutes.toString();
+
+    final prefs = await SharedPreferences.getInstance();
+    if (lampMode != null) await prefs.setInt('saved_lampMode', lampMode);
+    if (lampBrightness != null) await prefs.setInt('saved_lampBrightness', lampBrightness);
+    if (lampState != null) await prefs.setBool('saved_lampState', lampState);
+    if (ledAutoOffMinutes != null) await prefs.setInt('saved_ledAutoOff', ledAutoOffMinutes);
+    if (hotspotEnabled != null) await prefs.setBool('saved_hotspotEnabled', hotspotEnabled);
+    if (monitoringEnabled != null) await prefs.setBool('saved_monitoringEnabled', monitoringEnabled);
 
     final activeAlarms = alarms ?? state.alarms;
     for (int i = 0; i < activeAlarms.length && i < 6; i++) {
