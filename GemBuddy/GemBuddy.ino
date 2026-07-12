@@ -889,7 +889,7 @@ void activateMenuItem() {
       }
       break;
     case 3:
-      if (!settings.monitoringEnabled && WiFi.status() != WL_CONNECTED) {
+      if (!settings.monitoringEnabled && settings.wifiSsid[0] == '\0') {
         tone(PIN_BUZZER, 200, 150);
         delay(200);
         tone(PIN_BUZZER, 200, 150);
@@ -2123,7 +2123,7 @@ void setupNetworking() {
   WiFi.mode(WIFI_OFF);
   delay(150); // Allow RF radio to settle
 
-  const bool canConnectStation = settings.wifiEnabled && settings.wifiSsid[0] != '\0';
+  const bool canConnectStation = settings.monitoringEnabled && settings.wifiSsid[0] != '\0';
   // Keep hotspot active on boot for 10 min window (even if hotspotEnabled is false in settings)
   const bool keepHotspot = true; 
 
