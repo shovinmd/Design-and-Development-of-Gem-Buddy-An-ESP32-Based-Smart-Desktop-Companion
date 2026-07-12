@@ -1435,6 +1435,10 @@ void updateFaceAnimation() {
     rt.picaioMood = 4; // Sad / Tired
     rt.faceMode = FACE_EVENING;
   } else {
+    if (rt.faceMode == FACE_NIGHT || rt.faceMode == FACE_EVENING) {
+      rt.faceMode = FACE_DAY;
+    }
+    
     switch (rt.faceMode) {
       case FACE_PET:
         rt.picaioMood = 0; // Full rectangles
@@ -1449,13 +1453,11 @@ void updateFaceAnimation() {
       case FACE_MENU:
         rt.picaioMood = 5; // Suspicious / Wide
         break;
-      case FACE_EVENING:
-        rt.picaioMood = 4; // Sad / Tired
-        break;
       case FACE_DAY:
+      case FACE_INFO:
+      case FACE_UPDATE:
       default:
         rt.picaioMood = 0; // Neutral
-        rt.faceMode = FACE_DAY;
         break;
     }
   }
@@ -1901,7 +1903,9 @@ void handleUpdateUI() {
   html += "  btn.disabled = true;";
   html += "  stat.innerText = 'Downloading binary from GitHub...';";
   html += "  try {";
-  html += "    const res = await fetch(url);";
+  html += "    let fetchUrl = url;";
+  html += "    if (url.includes('github.com')) fetchUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);";
+  html += "    const res = await fetch(fetchUrl);";
   html += "    if(!res.ok) throw new Error('GitHub download failed');";
   html += "    const blob = await res.blob();";
   html += "    stat.innerText = 'Flashing ESP32 (do not close page)...';";
