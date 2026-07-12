@@ -456,6 +456,23 @@ class DeviceNotifier extends Notifier<DeviceState> {
           isSimulated: false,
           isConnected: true,
         );
+        
+        try {
+          final Map<String, dynamic> data = json.decode(response.body);
+          if (data['wifiConnected'] == false) {
+            final prefs = await SharedPreferences.getInstance();
+            final savedSsid = prefs.getString('saved_wifi_ssid');
+            final savedPass = prefs.getString('saved_wifi_pass');
+            if (savedSsid != null && savedSsid.isNotEmpty) {
+              await saveSettings(
+                wifiSsid: savedSsid,
+                wifiPass: savedPass,
+                wifiEnabled: true,
+              );
+            }
+          }
+        } catch (_) {}
+
         return true;
       }
     } catch (_) {
