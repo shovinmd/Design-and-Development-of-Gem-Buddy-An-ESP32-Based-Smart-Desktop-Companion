@@ -601,6 +601,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
   Future<void> _openUpdateWebview(String downloadUrl) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: GemColors.cardBackground,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: GemColors.accentBlue),
+            const SizedBox(height: 16),
+            Text('Connecting to GEM Buddy...', style: TextStyle(color: GemColors.textPrimary)),
+            const SizedBox(height: 8),
+            Text('Preparing updater interface', style: TextStyle(color: GemColors.textSecondary, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+
+    // Wait 3 seconds to let ESP32 prepare
+    await Future.delayed(const Duration(seconds: 3));
+
+    if (mounted) {
+      Navigator.of(context).pop(); // Close loading dialog
+    }
+
     final ipAddress = ref.read(deviceProvider).ipAddress;
     final url = Uri.parse('http://$ipAddress/update?url=${Uri.encodeComponent(downloadUrl)}');
     
