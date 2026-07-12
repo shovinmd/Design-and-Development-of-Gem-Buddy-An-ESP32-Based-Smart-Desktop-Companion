@@ -153,7 +153,7 @@ struct RuntimeState {
 
 static const char* MENU_ITEMS[] = {
   "Alarm",
-  "LED Control",
+  "Lamp Control",
   "Heart Rate",
   "Monitoring",
   "Device Info",
@@ -963,21 +963,21 @@ void drawFaceEyes() {
   if (x2 < 48) x2 = 48;
   if (x2 > 96) x2 = 96;
 
-  // Draw the eyes centered (y = 12)
+  // Draw the eyes slightly higher (y = 8) to center them better now that clock is gone
   if (rt.isBlinking || rt.picaioMood == 2) {
-    u8g2.drawBitmap(x1, 12, 4, 32, eye0);
-    u8g2.drawBitmap(x2, 12, 4, 32, eye0);
+    u8g2.drawBitmap(x1, 8, 4, 32, eye0);
+    u8g2.drawBitmap(x2, 8, 4, 32, eye0);
   } else {
     int m = rt.picaioMood;
     if (rt.picaioXp < 6) {
-      u8g2.drawBitmap(x1, 12, 4, 32, peyes[m][1][0]);
-      u8g2.drawBitmap(x2, 12, 4, 32, peyes[m][1][1]);
+      u8g2.drawBitmap(x1, 8, 4, 32, peyes[m][1][0]);
+      u8g2.drawBitmap(x2, 8, 4, 32, peyes[m][1][1]);
     } else if (rt.picaioXp < 26) {
-      u8g2.drawBitmap(x1, 12, 4, 32, peyes[m][0][0]);
-      u8g2.drawBitmap(x2, 12, 4, 32, peyes[m][0][1]);
+      u8g2.drawBitmap(x1, 8, 4, 32, peyes[m][0][0]);
+      u8g2.drawBitmap(x2, 8, 4, 32, peyes[m][0][1]);
     } else {
-      u8g2.drawBitmap(x1, 12, 4, 32, peyes[m][2][0]);
-      u8g2.drawBitmap(x2, 12, 4, 32, peyes[m][2][1]);
+      u8g2.drawBitmap(x1, 8, 4, 32, peyes[m][2][0]);
+      u8g2.drawBitmap(x2, 8, 4, 32, peyes[m][2][1]);
     }
   }
 }
@@ -1238,12 +1238,7 @@ void drawFaceScreen() {
     return;
   }
 
-  // Small clock on top-left
-  char timeStr[16];
-  char dateStr[16];
-  formatLocalDateTime(dateStr, sizeof(dateStr), timeStr, sizeof(timeStr), false);
-  u8g2.setFont(u8g2_font_4x6_tr);
-  u8g2.drawStr(4, 8, timeStr);
+  // (Small clock on top-left has been removed for a cleaner look)
 
   // Draw WiFi symbol if connected, or slashed symbol if enabled but disconnected (at x = 114, y = 8)
   if (WiFi.status() == WL_CONNECTED) {
