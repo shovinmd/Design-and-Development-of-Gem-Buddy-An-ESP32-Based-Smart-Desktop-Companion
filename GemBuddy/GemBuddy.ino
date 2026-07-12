@@ -891,6 +891,12 @@ void activateMenuItem() {
       softConfirm();
       break;
     case 6:
+      if (settings.monitoringEnabled) {
+        tone(PIN_BUZZER, 200, 150);
+        delay(200);
+        tone(PIN_BUZZER, 200, 150);
+        break; // Disallow Factory Reset if Guard is ON
+      }
       memset(&settings, 0, sizeof(settings));
       setDefaultSettings(settings);
       saveSettings();
@@ -1229,7 +1235,7 @@ void drawFaceScreen() {
     
     char msg[32] = "";
     if (settings.monitoringEnabled) {
-      strcpy(msg, "PLEASE DON'T TOUCH ME!");
+      strcpy(msg, "TOUCH DETECTED!");
     } else if (rt.petActive) {
       snprintf(msg, sizeof(msg), "Hello %s!", settings.userName);
     } else {
@@ -2009,6 +2015,11 @@ void setupNetworking() {
 
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println("WiFi Connected! IP: " + WiFi.localIP().toString());
+      
+      // Device cannot host when WiFi is connected!
+      WiFi.mode(WIFI_STA);
+      rt.hotspotActiveState = false;
+      
       configTime(settings.timezoneOffsetMinutes * 60, 0, "pool.ntp.org", "time.nist.gov");
       Serial.println("NTP Time Sync Configured.");
       
@@ -2168,6 +2179,7 @@ void setup() {
   Serial.println("=================================\n");
 }
 void updateHotspotTimeout() {
+  if (WiFi.status() == WL_CONNECTED) return; // Device cannot host when connected to WiFi!
   if (settings.hotspotEnabled) return;
   if (!settings.setupComplete) return;
 
@@ -2239,6 +2251,7 @@ void loop() {
     sendGuardPing();
   }
 
+  /*
   if (rt.batteryCritical) {
     if (!rt.deepSleepReady) {
       rt.deepSleepReady = true;
@@ -2246,6 +2259,7 @@ void loop() {
       enterDeepSleep();
     }
   }
+  */
 
   applyPowerPolicy();
 

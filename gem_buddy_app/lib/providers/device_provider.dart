@@ -265,7 +265,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
 
   void _startPolling() {
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (state.isSimulated) {
         _simulateTick();
       } else {
