@@ -485,11 +485,19 @@ void refreshSensors(bool force = false) {
     rt.ldrRaw = readLdrRaw();
     rt.ambientDark = rt.ldrRaw < 500;
 
-    if (!force && !wasDark && rt.ambientDark) {
-      if (isNightTime() && !settings.lampState) {
-        settings.lampState = true;
-        settings.lampMode = LAMP_STATIC;
-        saveSettings();
+    if (!force) {
+      if (!wasDark && rt.ambientDark) {
+        if (isNightTime() && !settings.lampState) {
+          settings.lampState = true;
+          settings.lampMode = LAMP_STATIC;
+          setLampOn();
+          saveSettings();
+        }
+      } else if (wasDark && !rt.ambientDark) {
+        if (settings.lampState) {
+          setLampOff();
+          saveSettings();
+        }
       }
     }
 
@@ -1420,13 +1428,13 @@ void updateFaceAnimation() {
   } else {
     switch (rt.faceMode) {
       case FACE_PET:
-        rt.picaioMood = 1; // Happy
+        rt.picaioMood = 0; // Full rectangles
         break;
       case FACE_ALARM:
         rt.picaioMood = 3; // Angry / Alert
         break;
       case FACE_HEART:
-        rt.picaioMood = 1; // Happy
+        rt.picaioMood = 0; // Full rectangles
         break;
       case FACE_WIFI_SETUP:
       case FACE_MENU:
