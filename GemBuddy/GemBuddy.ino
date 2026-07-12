@@ -47,7 +47,8 @@ enum FaceMode {
   FACE_ALARM,
   FACE_INFO,
   FACE_WIFI_SETUP,
-  FACE_CONFIGURING
+  FACE_CONFIGURING,
+  FACE_UPDATE
 };
 
 enum LampMode {
@@ -157,7 +158,8 @@ static const char* MENU_ITEMS[] = {
   "Monitoring",
   "Device Info",
   "WiFi Setup",
-  "Reset"
+  "Reset",
+  "Update Firmware"
 };
 
 constexpr uint8_t MENU_ITEM_COUNT = sizeof(MENU_ITEMS) / sizeof(MENU_ITEMS[0]);
@@ -908,6 +910,10 @@ void activateMenuItem() {
       rt.welcomeStep = 0;
       rt.welcomeUntil = millis() + BOOT_WELCOME_MS;
       break;
+    case 7:
+      rt.faceMode = FACE_UPDATE;
+      softConfirm();
+      break;
   }
 }
 
@@ -1114,6 +1120,22 @@ void drawWiFiSetupScreen() {
   u8g2.sendBuffer();
 }
 
+void drawUpdateScreen() {
+  u8g2.clearBuffer();
+  u8g2.drawRFrame(4, 4, 120, 56, 8);
+  drawCentered(18, "OTA Update", u8g2_font_6x10_tf);
+  u8g2.drawHLine(12, 22, 104);
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    drawCentered(34, "Ready!", u8g2_font_5x7_tr);
+    drawCentered(44, "Open App to Update", u8g2_font_5x7_tr);
+    drawCentered(54, WiFi.localIP().toString().c_str(), u8g2_font_5x7_tr);
+  } else {
+    drawCentered(40, "Waiting for WiFi...", u8g2_font_5x7_tr);
+  }
+  u8g2.sendBuffer();
+}
+
 void closeWiFiSetup() {
   rt.faceMode = FACE_DAY;
   setupNetworking();
@@ -1245,13 +1267,28 @@ void drawFaceScreen() {
     } else {
       switch (rt.greetingIndex) {
         case 0:
-          snprintf(msg, sizeof(msg), "Hello %s!", settings.userName);
+        case 1: {
+          if (validClock()) {
+            time_t utc = time(nullptr);
+            time_t local = utc + (settings.timezoneOffsetMinutes * 60);
+            struct tm tmv;
+            gmtime_r(&local, &tmv);
+            if (tmv.tm_hour >= 5 && tmv.tm_hour < 12) {
+              snprintf(msg, sizeof(msg), "Good Morning %s!", settings.userName);
+            } else if (tmv.tm_hour >= 12 && tmv.tm_hour < 17) {
+              snprintf(msg, sizeof(msg), "Good Afternoon %s!", settings.userName);
+            } else if (tmv.tm_hour >= 17 && tmv.tm_hour < 21) {
+              snprintf(msg, sizeof(msg), "Good Evening %s!", settings.userName);
+            } else {
+              snprintf(msg, sizeof(msg), "Good Night %s!", settings.userName);
+            }
+          } else {
+            snprintf(msg, sizeof(msg), "Hello %s!", settings.userName);
+          }
           break;
-        case 1:
-          snprintf(msg, sizeof(msg), "Hi %s, keep smiling :)", settings.userName);
-          break;
+        }
         case 2:
-          snprintf(msg, sizeof(msg), "%s, you're awesome!", settings.userName);
+          snprintf(msg, sizeof(msg), "What's up %s?", settings.userName);
           break;
         case 3: {
           char tBuf[16];
@@ -1335,6 +1372,11 @@ void renderScreen() {
 
   if (rt.faceMode == FACE_WIFI_SETUP) {
     drawWiFiSetupScreen();
+    return;
+  }
+
+  if (rt.faceMode == FACE_UPDATE) {
+    drawUpdateScreen();
     return;
   }
 
@@ -1585,8 +1627,8 @@ void handleTouchInput() {
       return;
     }
 
-    // If inside a sub-mode page (heart rate, info, wifi setup), long press exits to default face
-    if (rt.faceMode == FACE_HEART || rt.faceMode == FACE_INFO || rt.faceMode == FACE_WIFI_SETUP) {
+    // If inside a sub-mode page (heart rate, info, wifi setup, update), long press exits to default face
+    if (rt.faceMode == FACE_HEART || rt.faceMode == FACE_INFO || rt.faceMode == FACE_WIFI_SETUP || rt.faceMode == FACE_UPDATE) {
       if (rt.faceMode == FACE_HEART) {
         stopHeartMode();
       } else if (rt.faceMode == FACE_WIFI_SETUP) {
