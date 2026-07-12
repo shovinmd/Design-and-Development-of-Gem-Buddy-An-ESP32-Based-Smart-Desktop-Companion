@@ -780,6 +780,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final success = await deviceNotifier.saveSettings(
       userName: _nameController.text.trim(),
       deviceName: _nicknameController.text.trim(),
+      wifiSsid: _ssidController.text.trim().isNotEmpty ? _ssidController.text.trim() : null,
+      wifiPass: _passController.text.trim().isNotEmpty ? _passController.text.trim() : null,
       timezoneLabel: tzMatch['label'] as String,
       timezoneOffsetMinutes: tzMatch['offset'] as int,
     );
