@@ -32,6 +32,8 @@ class DeviceState {
   final bool timeValid;
   final String ipAddress;
   final List<GemAlarm> alarms;
+  final bool deviceOnline;   // device pinged backend within last 90s
+  final bool appOnline;      // app is connected to broker WS
 
   // App-specific connection and simulator statuses
   final bool isConnected;
@@ -69,6 +71,8 @@ class DeviceState {
     this.timeValid = false,
     this.ipAddress = '192.168.4.1',
     this.alarms = const [],
+    this.deviceOnline = false,
+    this.appOnline = false,
     this.isConnected = false,
     this.isConnecting = false,
     this.isSimulated = false, // Default to false so we connect to hardware
@@ -103,6 +107,8 @@ class DeviceState {
     bool? timeValid,
     String? ipAddress,
     List<GemAlarm>? alarms,
+    bool? deviceOnline,
+    bool? appOnline,
     bool? isConnected,
     bool? isConnecting,
     bool? isSimulated,
@@ -136,6 +142,8 @@ class DeviceState {
       timeValid: timeValid ?? this.timeValid,
       ipAddress: ipAddress ?? this.ipAddress,
       alarms: alarms ?? this.alarms,
+      deviceOnline: deviceOnline ?? this.deviceOnline,
+      appOnline: appOnline ?? this.appOnline,
       isConnected: isConnected ?? this.isConnected,
       isConnecting: isConnecting ?? this.isConnecting,
       isSimulated: isSimulated ?? this.isSimulated,
@@ -743,6 +751,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
   }
 
   WebSocketChannel? _wsChannel;
+  Timer? _appPingTimer;
 
   String _getRestUrl(String endpoint) {
     final ip = state.brokerIpAddress;
@@ -841,7 +850,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
 
       _wsChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
       
-      state = state.copyWith(isBrokerConnected: true);
+      state = state.copyWith(isBrokerConnected: true, appOnline: true);
       ref.read(timelineProvider.notifier).addLog(
         type: 'system',
         title: 'Broker Connected',
@@ -850,6 +859,19 @@ class DeviceNotifier extends Notifier<DeviceState> {
 
       fetchSecurityLogs();
 
+      // Start app-side 60s keepalive ping so backend knows app is online
+      _appPingTimer?.cancel();
+      _appPingTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+        if (!state.isBrokerConnected) return;
+        try {
+          final pingUrl = _getRestUrl('/api/ping');
+          await http.post(
+            Uri.parse(pingUrl),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'source=app&device=${state.deviceName}',
+          ).timeout(const Duration(seconds: 5));
+        } catch (_) {}
+      });
       _wsChannel!.stream.listen(
         (message) {
           try {
@@ -861,6 +883,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
 
               state = state.copyWith(
                 lastNotificationMessage: '🚨 SECURE ALERT: $reason detected on $device! (Bat: $battery%)',
+                deviceOnline: data['deviceOnline'] ?? state.deviceOnline,
               );
 
               ref.read(timelineProvider.notifier).addLog(
@@ -870,6 +893,17 @@ class DeviceNotifier extends Notifier<DeviceState> {
               );
 
               fetchSecurityLogs();
+            } else if (data['event'] == 'ping_ack') {
+              // Backend confirmed a ping — update live status
+              state = state.copyWith(
+                deviceOnline: data['deviceOnline'] ?? state.deviceOnline,
+                appOnline:    data['appOnline']    ?? state.appOnline,
+              );
+            } else if (data['event'] == 'status_update') {
+              state = state.copyWith(
+                deviceOnline: data['deviceOnline'] ?? state.deviceOnline,
+                appOnline:    data['appOnline']    ?? state.appOnline,
+              );
             } else if (data['event'] == 'guard_toggle') {
               final active = data['active'] ?? false;
               state = state.copyWith(monitoringEnabled: active);
@@ -877,7 +911,11 @@ class DeviceNotifier extends Notifier<DeviceState> {
               fetchSecurityLogs();
             } else if (data['event'] == 'info') {
               final active = data['guardMode'] ?? false;
-              state = state.copyWith(monitoringEnabled: active);
+              state = state.copyWith(
+                monitoringEnabled: active,
+                deviceOnline: data['deviceOnline'] ?? false,
+                appOnline:    true, // we just connected
+              );
               fetchSecurityLogs();
             }
           } catch (e) {
@@ -885,8 +923,9 @@ class DeviceNotifier extends Notifier<DeviceState> {
           }
         },
         onError: (err) {
-          state = state.copyWith(isBrokerConnected: false);
+          state = state.copyWith(isBrokerConnected: false, appOnline: false);
           if (kDebugMode) print("WS error: $err");
+          _appPingTimer?.cancel();
           // Reconnect after 5 seconds
           Future.delayed(const Duration(seconds: 5), () {
             if (_wsChannel == null && state.brokerIpAddress.isNotEmpty) {
@@ -895,7 +934,8 @@ class DeviceNotifier extends Notifier<DeviceState> {
           });
         },
         onDone: () {
-          state = state.copyWith(isBrokerConnected: false);
+          state = state.copyWith(isBrokerConnected: false, appOnline: false);
+          _appPingTimer?.cancel();
           if (kDebugMode) print("WS channel closed.");
         },
       );

@@ -6,50 +6,53 @@ const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Enable CORS
 app.use(cors());
-
-// Support JSON and URL-encoded bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Create HTTP server
 const server = http.createServer(app);
-
-// Initialize WebSocket server instance
 const wss = new WebSocket.Server({ server });
 
-// Track connected clients
+// ── Tracked state ──────────────────────────────────────────────────────────────
 const clients = new Set();
-
-// Guard Mode state and persistent memory logs
 let guardModeActive = false;
 const guardLogs = [];
 
+// Last-seen timestamps (epoch ms)
+const lastSeen = {
+  device: 0,   // last ping from ESP32
+  app:    0,   // last ping from Flutter app
+};
+
+// ── WebSocket connections ──────────────────────────────────────────────────────
 wss.on('connection', (ws, req) => {
   const ip = req.socket.remoteAddress;
-  console.log(`[WebSocket] Client connected from ${ip}`);
+  console.log(`[WS] Client connected from ${ip}`);
   clients.add(ws);
 
-  // Send a welcome message to confirm connection & current status
-  ws.send(JSON.stringify({ 
-    event: 'info', 
-    message: 'Connected to GEM Notification Broker Server',
-    guardMode: guardModeActive
+  // Welcome: include current guard state + last-seen info
+  ws.send(JSON.stringify({
+    event:         'info',
+    message:       'Connected to GEM Security Broker',
+    guardMode:     guardModeActive,
+    deviceOnline:  isOnline('device'),
+    appOnline:     isOnline('app'),
+    lastSeenDevice: lastSeen.device,
+    lastSeenApp:    lastSeen.app,
   }));
 
   ws.on('close', () => {
-    console.log(`[WebSocket] Client disconnected (${ip})`);
+    console.log(`[WS] Client disconnected (${ip})`);
     clients.delete(ws);
   });
 
-  ws.on('error', (error) => {
-    console.error(`[WebSocket] Error: ${error.message}`);
+  ws.on('error', (err) => {
+    console.error(`[WS] Error: ${err.message}`);
     clients.delete(ws);
   });
 });
 
-// Broadcast helper
+// ── Helpers ────────────────────────────────────────────────────────────────────
 function broadcast(payload) {
   let count = 0;
   clients.forEach((client) => {
@@ -61,112 +64,182 @@ function broadcast(payload) {
   return count;
 }
 
-// HTTP REST endpoints
+/** Returns true if the given source pinged within the last 90 seconds */
+function isOnline(source) {
+  return lastSeen[source] > 0 && (Date.now() - lastSeen[source]) < 90_000;
+}
+
+function addLog(entry) {
+  guardLogs.unshift(entry);
+  if (guardLogs.length > 100) guardLogs.pop();
+}
+
+// ── REST: Health ───────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     clients: clients.size,
     guardModeActive,
-    totalLogs: guardLogs.length 
+    totalLogs: guardLogs.length,
+    deviceOnline: isOnline('device'),
+    appOnline:    isOnline('app'),
+    lastSeenDevice: lastSeen.device ? new Date(lastSeen.device).toISOString() : null,
+    lastSeenApp:    lastSeen.app    ? new Date(lastSeen.app).toISOString()    : null,
   });
 });
 
-// Guard Mode status check
-app.get('/api/guard/status', (req, res) => {
-  res.json({ active: guardModeActive });
-});
+// ── REST: Ping (device or app keepalive) ───────────────────────────────────────
+// POST /api/ping  { source: "device"|"app", device?, battery?, ldr? }
+// GET  /api/ping?source=device  (for ESP32 which uses GET easier)
+function handlePing(req, res) {
+  const body    = { ...req.query, ...req.body };
+  const source  = (body.source || 'device').toLowerCase();
+  const device  = body.device  || 'GEM';
+  const battery = parseInt(body.battery, 10) || 100;
+  const ldr     = parseInt(body.ldr,     10) || 2048;
+  const now     = Date.now();
 
-// Guard Mode toggle
-app.post('/api/guard/toggle', (req, res) => {
-  const { active } = req.body;
-  if (typeof active === 'boolean') {
-    guardModeActive = active;
-  } else {
-    guardModeActive = !guardModeActive;
+  if (source === 'device' || source === 'app') {
+    lastSeen[source] = now;
   }
 
-  console.log(`[Guard Mode] Toggled to ${guardModeActive ? 'ACTIVE' : 'INACTIVE'}`);
+  console.log(`[Ping] ${source.toUpperCase()} | device=${device} bat=${battery}% ldr=${ldr} guardMode=${guardModeActive}`);
 
-  // Broadcast state change to all clients (ESP32 and Flutter App)
-  broadcast({
-    event: 'guard_toggle',
-    active: guardModeActive
+  // Build ack payload
+  const ack = {
+    event:         'ping_ack',
+    source,
+    device,
+    battery,
+    ldr,
+    guardMode:     guardModeActive,
+    deviceOnline:  isOnline('device'),
+    appOnline:     isOnline('app'),
+    timestamp:     new Date(now).toISOString(),
+  };
+
+  // Log the ping if guard mode is on
+  if (guardModeActive) {
+    addLog({
+      timestamp:   ack.timestamp,
+      event:       `${source}-ping`,
+      device,
+      battery,
+      ldr,
+      guardActive: true,
+    });
+  }
+
+  // Broadcast ack to all WebSocket clients (app sees device is alive, and vice-versa)
+  broadcast(ack);
+
+  res.json({ ok: true, guardMode: guardModeActive, ack });
+}
+
+app.get('/api/ping',  handlePing);
+app.post('/api/ping', handlePing);
+
+// ── REST: Guard status ─────────────────────────────────────────────────────────
+app.get('/api/guard/status', (req, res) => {
+  res.json({
+    active:        guardModeActive,
+    deviceOnline:  isOnline('device'),
+    appOnline:     isOnline('app'),
+    lastSeenDevice: lastSeen.device,
+    lastSeenApp:    lastSeen.app,
   });
+});
 
+// ── REST: Guard toggle ─────────────────────────────────────────────────────────
+app.post('/api/guard/toggle', (req, res) => {
+  const { active } = req.body;
+  guardModeActive = (typeof active === 'boolean') ? active : !guardModeActive;
+  console.log(`[Guard] Toggled → ${guardModeActive ? 'ACTIVE' : 'INACTIVE'}`);
+
+  const entry = {
+    timestamp:   new Date().toISOString(),
+    event:       guardModeActive ? 'guard-enabled' : 'guard-disabled',
+    device:      req.body.device || 'app',
+    battery:     100,
+    ldr:         0,
+    guardActive: guardModeActive,
+  };
+  addLog(entry);
+
+  broadcast({ event: 'guard_toggle', active: guardModeActive });
   res.json({ success: true, active: guardModeActive });
 });
 
-// Fetch Desk Guard Logs
-app.get('/api/guard/logs', (req, res) => {
-  res.json(guardLogs);
-});
+// ── REST: Guard logs ───────────────────────────────────────────────────────────
+app.get('/api/guard/logs', (req, res) => res.json(guardLogs));
 
-// Clear Desk Guard Logs
 app.post('/api/guard/clear', (req, res) => {
   guardLogs.length = 0;
-  console.log('[Guard Mode] Security logs cleared.');
+  console.log('[Guard] Logs cleared.');
   res.json({ success: true });
 });
 
-// Webhook that the ESP32 triggers
+// ── REST: Webhook (ESP32 security events) ─────────────────────────────────────
 app.post('/webhook', (req, res) => {
-  console.log('--- RECEIVED WEBHOOK ALERT FROM GEM ---');
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
-
-  const device = req.body.device || 'GEM';
-  const user = req.body.user || 'Friend';
-  const event = req.body.reason || req.body.event || 'general-alert';
+  const device  = req.body.device  || 'GEM';
+  const user    = req.body.user    || 'Friend';
+  const event   = req.body.reason  || req.body.event || 'general-alert';
   const battery = req.body.battery || '100';
-  const ldr = req.body.ldr || '2048';
+  const ldr     = req.body.ldr     || '2048';
 
-  console.log(`[Event] Device: ${device} | Event: ${event} | LDR: ${ldr} | Battery: ${battery}%`);
+  console.log(`[Webhook] device=${device} event=${event} ldr=${ldr} bat=${battery}%`);
 
-  // Log event if Guard Mode is active (or generally for records)
-  const isSecurityAlert = ['shadow-detected', 'flash-detected', 'touch-down', 'long-touch', 'alarm'].includes(event);
-  
+  // Update device last-seen on any webhook too
+  lastSeen.device = Date.now();
+
+  const isSecurityAlert = ['shadow-detected','flash-detected','touch-down','long-touch','alarm'].includes(event);
   const logEntry = {
-    timestamp: new Date().toISOString(),
+    timestamp:   new Date().toISOString(),
     event,
     device,
     user,
-    battery: parseInt(battery, 10) || 100,
-    ldr: parseInt(ldr, 10) || 2048,
-    guardActive: guardModeActive
-  };
-  
-  if (guardModeActive || isSecurityAlert) {
-    guardLogs.unshift(logEntry); // Add to beginning of logs array
-    if (guardLogs.length > 50) {
-      guardLogs.pop(); // Keep last 50 entries
-    }
-  }
-
-  // Construct message to forward to Flutter app
-  const payload = {
-    event: 'alert',
-    reason: event,
-    device: device,
-    battery: parseInt(battery, 10) || 100,
-    ldr: parseInt(ldr, 10) || 2048,
+    battery:     parseInt(battery, 10) || 100,
+    ldr:         parseInt(ldr,     10) || 2048,
     guardActive: guardModeActive,
-    timestamp: logEntry.timestamp
   };
 
-  // Broadcast to all connected WebSockets
-  const broadcastCount = broadcast(payload);
+  if (guardModeActive || isSecurityAlert) addLog(logEntry);
 
-  console.log(`[Broadcast] Forwarded alert payload to ${broadcastCount} app clients.`);
-  console.log('----------------------------------------');
+  const payload = {
+    event:       'alert',
+    reason:      event,
+    device,
+    battery:     parseInt(battery, 10) || 100,
+    ldr:         parseInt(ldr,     10) || 2048,
+    guardActive: guardModeActive,
+    deviceOnline: true,
+    timestamp:   logEntry.timestamp,
+  };
 
-  res.status(200).send('Alert received and broadcasted successfully.');
+  const count = broadcast(payload);
+  console.log(`[Broadcast] Sent alert to ${count} client(s).`);
+  res.status(200).send('OK');
 });
 
-// Start the server
+// ── Server-side heartbeat: broadcast connectivity status every 30s ─────────────
+setInterval(() => {
+  if (clients.size > 0) {
+    broadcast({
+      event:        'status_update',
+      guardMode:    guardModeActive,
+      deviceOnline: isOnline('device'),
+      appOnline:    isOnline('app'),
+      timestamp:    new Date().toISOString(),
+    });
+  }
+}, 30_000);
+
+// ── Start ──────────────────────────────────────────────────────────────────────
 server.listen(port, '0.0.0.0', () => {
   console.log(`==================================================`);
-  console.log(`🚀 GEM Webhook Security Broker running on port ${port}`);
-  console.log(`👉 Webhook URL for ESP32: http://<YOUR_COMPUTER_IP>:${port}/webhook`);
-  console.log(`👉 WebSocket URL for App: ws://<YOUR_COMPUTER_IP>:${port}`);
+  console.log(`🚀 GEM Security Broker  →  port ${port}`);
+  console.log(`   GET/POST /api/ping   — device / app keepalive`);
+  console.log(`   POST /webhook        — ESP32 security events`);
+  console.log(`   WS   ws://<host>:${port}   — Flutter app stream`);
   console.log(`==================================================`);
 });

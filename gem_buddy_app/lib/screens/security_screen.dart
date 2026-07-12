@@ -100,11 +100,101 @@ class SecurityScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 16),
                       const Divider(color: GemColors.glassBorder),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'When active, any touch triggers, movement, or light shifts will notify you immediately. If Wi-Fi is enabled, GEM sends HTTP webhook events.',
-                        style: TextStyle(color: GemColors.textSecondary, fontSize: 13, height: 1.4),
+                      const SizedBox(height: 12),
+                      // Live ping status row
+                      Row(
+                        children: [
+                          // Device ping status
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: deviceState.deviceOnline
+                                    ? GemColors.statusActive.withValues(alpha: 0.1)
+                                    : Colors.black.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: deviceState.deviceOnline
+                                      ? GemColors.statusActive.withValues(alpha: 0.3)
+                                      : GemColors.glassBorder,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.router_rounded,
+                                    size: 14,
+                                    color: deviceState.deviceOnline ? GemColors.statusActive : GemColors.textSecondary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Device', style: TextStyle(color: GemColors.textSecondary, fontSize: 10)),
+                                      Text(
+                                        deviceState.deviceOnline ? 'Online ●' : 'Offline ○',
+                                        style: TextStyle(
+                                          color: deviceState.deviceOnline ? GemColors.statusActive : GemColors.textSecondary,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // App ping status
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: deviceState.appOnline
+                                    ? GemColors.accentBlue.withValues(alpha: 0.1)
+                                    : Colors.black.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: deviceState.appOnline
+                                      ? GemColors.accentBlue.withValues(alpha: 0.3)
+                                      : GemColors.glassBorder,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.phone_android_rounded,
+                                    size: 14,
+                                    color: deviceState.appOnline ? GemColors.accentBlue : GemColors.textSecondary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('App', style: TextStyle(color: GemColors.textSecondary, fontSize: 10)),
+                                      Text(
+                                        deviceState.appOnline ? 'Connected ●' : 'Offline ○',
+                                        style: TextStyle(
+                                          color: deviceState.appOnline ? GemColors.accentBlue : GemColors.textSecondary,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'When active, any touch, movement, or light shift will alert you instantly. GEM pings the broker every 30s so you always know it\'s alive.',
+                        style: TextStyle(color: GemColors.textSecondary, fontSize: 12, height: 1.4),
+                      ),
+
                     ],
                   ),
                 ),

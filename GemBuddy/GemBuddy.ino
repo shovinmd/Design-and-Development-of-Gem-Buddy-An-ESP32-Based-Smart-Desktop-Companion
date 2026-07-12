@@ -110,6 +110,7 @@ struct RuntimeState {
   uint32_t fingerDetectedAt = 0;
   bool pulseCalibrated = false;
   uint32_t lastAppRequestAt = 0;
+  uint32_t lastGuardPingMs = 0;  // last time we POSTed a keepalive ping
 
   bool lampNotificationFlash = false;
   uint32_t lampNotificationUntil = 0;
@@ -169,6 +170,65 @@ bool argTrue(const String& value) {
   v.toLowerCase();
   return v == "1" || v == "true" || v == "on" || v == "yes";
 }
+
+// ── Cloud / broker helpers ─────────────────────────────────────────────────────
+// POST a webhook event to the configured broker (fire-and-forget, non-blocking).
+void triggerCloudEvent(const char* eventName) {
+  if (!settings.monitoringEnabled) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (strlen(settings.cloudWebhook) < 8) return;  // no URL configured
+
+  HTTPClient http;
+  http.begin(settings.cloudWebhook);
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  String body = "event=";
+  body += eventName;
+  body += "&device=";
+  body += settings.deviceName;
+  body += "&user=";
+  body += settings.userName;
+  body += "&battery=";
+  body += String(rt.batteryPercent);
+  body += "&ldr=";
+  body += String(rt.ldrRaw);
+
+  int code = http.POST(body);
+  if (kDebugMode && code > 0) Serial.printf("[Cloud] %s → %d\n", eventName, code);
+  http.end();
+}
+
+// POST a lightweight keepalive ping to the broker's /api/ping endpoint.
+// Called every 30 s when monitoring is enabled and Wi-Fi is up.
+void sendGuardPing() {
+  if (!settings.monitoringEnabled) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (strlen(settings.cloudWebhook) < 8) return;
+
+  // Derive the broker base URL from the webhook URL.
+  // Webhook is e.g. "https://host/webhook" → ping is "https://host/api/ping"
+  String webhook = String(settings.cloudWebhook);
+  int lastSlash = webhook.lastIndexOf('/');
+  String base = (lastSlash > 8) ? webhook.substring(0, lastSlash) : webhook;
+  String pingUrl = base + "/api/ping";
+
+  HTTPClient http;
+  http.begin(pingUrl);
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  String body = "source=device";
+  body += "&device=";
+  body += settings.deviceName;
+  body += "&battery=";
+  body += String(rt.batteryPercent);
+  body += "&ldr=";
+  body += String(rt.ldrRaw);
+
+  int code = http.POST(body);
+  if (kDebugMode && code > 0) Serial.printf("[Ping] /api/ping → %d\n", code);
+  http.end();
+}
+// ──────────────────────────────────────────────────────────────────────────────
 
 void setDefaultSettings(GemSettings& s) {
   GemSettings defaults;
@@ -657,69 +717,79 @@ void updateHeartMode() {
   rt.lastPulseSampleAt = now;
 
   int raw = analogRead(PIN_PULSE_ADC);
-  
-  // Finger presence check: typically, reading should be within this active range when a finger is placed.
-  // Readings close to 0 or 4095 represent unplugged/floating or saturated/removed sensor.
-  bool fingerPresent = (raw > 250 && raw < 3900);
-  
+
+  // Finger presence: sensor idle (no finger) reads near 0 or near 4095
+  bool fingerNow = (raw > 200 && raw < 3900);
   bool oldFinger = rt.fingerPresent;
-  rt.fingerPresent = fingerPresent;
+  rt.fingerPresent = fingerNow;
 
-  if (!oldFinger && fingerPresent) {
-    rt.fingerDetectedAt = now;
-    rt.pulseCalibrated = false;
-    rt.pulseBaseline = raw;
+  if (!oldFinger && fingerNow) {
+    // Finger just placed — reset all state for fresh session
+    rt.fingerDetectedAt  = now;
+    rt.pulseCalibrated   = false;
+    rt.pulseBaseline     = (float)raw;
+    rt.pulseAbove        = false;
+    rt.lastBeatMs        = 0;
+    rt.bpm               = 0;
   }
 
-  if (!fingerPresent) {
-    rt.bpm = 0;
-    rt.pulseAbove = false;
+  if (!fingerNow) {
+    rt.bpm               = 0;
+    rt.pulseAbove        = false;
+    rt.pulseBaseline     = 0.0f;
+    rt.fingerDetectedAt  = 0;
+    rt.pulseCalibrated   = false;
     setAllLeds(0);
-    rt.pulseBaseline = 0.0f; // reset baseline
-    rt.fingerDetectedAt = 0;
-    rt.pulseCalibrated = false;
     return;
   }
 
-  if (rt.pulseBaseline <= 1.0f) {
-    rt.pulseBaseline = raw;
+  uint32_t elapsed = now - rt.fingerDetectedAt;
+
+  // ── Phase 1: Fast calibration (first 2 s) ──────────────────────────────
+  if (elapsed < 2000) {
+    // Aggressively track baseline during calibration so it settles quickly
+    if (rt.pulseBaseline <= 1.0f) rt.pulseBaseline = (float)raw;
+    rt.pulseBaseline = rt.pulseBaseline * 0.90f + (float)raw * 0.10f;
+    rt.pulseAbove    = false;
+    return; // Don't detect beats yet
   }
 
-  // Proven signal processing logic from Pulse_Test.ino
-  rt.pulseBaseline = rt.pulseBaseline * 0.98f + raw * 0.02f;
-  float threshold = rt.pulseBaseline + 25.0f; // absolute offset for high-sensitivity pulse tracking
-
+  // ── Phase 2: Measurement ───────────────────────────────────────────────
   if (!rt.pulseCalibrated) {
-    if (now - rt.fingerDetectedAt >= 2500) {
-      rt.pulseCalibrated = true;
-      rt.lastBeatMs = now;
-    }
-    return;
+    rt.pulseCalibrated = true;
+    rt.lastBeatMs      = now; // Anchor so first interval is valid
   }
 
-  // If no beat detected for 3.5 seconds, reset BPM to 0 (flat/invalid signal)
-  if (rt.lastBeatMs > 0 && (now - rt.lastBeatMs > 3500)) {
+  // Slow-track baseline to follow DC drift without following the pulse itself
+  rt.pulseBaseline = rt.pulseBaseline * 0.98f + (float)raw * 0.02f;
+  float threshold  = rt.pulseBaseline + 25.0f;
+
+  // Stale signal → clear BPM (no beat for 3 seconds)
+  if (rt.lastBeatMs > 0 && (now - rt.lastBeatMs) > 3000) {
     rt.bpm = 0;
   }
 
-  // Trigger beat on rising edge above threshold (with 300ms lockout)
-  if (!rt.pulseAbove && raw > threshold && (rt.lastBeatMs == 0 || now - rt.lastBeatMs > 300)) {
+  // Rising-edge beat detection with 300 ms refractory period
+  if (!rt.pulseAbove && (float)raw > threshold && (now - rt.lastBeatMs) > 300) {
     rt.pulseAbove = true;
+
     if (rt.lastBeatMs > 0) {
       uint32_t interval = now - rt.lastBeatMs;
-      if (interval >= 300 && interval <= 1800) {
-        rt.bpm = (uint16_t)(60000UL / interval);
+      uint32_t bpmCalc  = 60000UL / interval;
+      // Only accept physiologically plausible BPM (40–180)
+      if (bpmCalc >= 40 && bpmCalc <= 180) {
+        rt.bpm = (uint16_t)bpmCalc;
       }
     }
     rt.lastBeatMs = now;
-    
-    // Light sync and buzzer beep sound on beat
+
+    // Visual + audio beat feedback
     setAllLeds(255);
-    tone(PIN_BUZZER, 1600, 40);
+    tone(PIN_BUZZER, 1200, 35);
   }
 
-  // Reset trigger after signal falls below baseline
-  if (rt.pulseAbove && raw < rt.pulseBaseline) {
+  // Falling edge — reset trigger and fade LEDs
+  if (rt.pulseAbove && (float)raw < rt.pulseBaseline) {
     rt.pulseAbove = false;
     setAllLeds(0);
   }
@@ -2110,6 +2180,12 @@ void loop() {
   if (validClock() && millis() - lastTimeSaveMs >= 60000) {
     lastTimeSaveMs = millis();
     saveLastKnownTime();
+  }
+
+  // Guard-mode keepalive ping to broker every 30 seconds
+  if (settings.monitoringEnabled && millis() - rt.lastGuardPingMs >= 30000UL) {
+    rt.lastGuardPingMs = millis();
+    sendGuardPing();
   }
 
   if (rt.batteryCritical) {
