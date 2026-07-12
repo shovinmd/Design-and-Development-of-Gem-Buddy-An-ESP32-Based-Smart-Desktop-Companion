@@ -491,7 +491,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _checkGithubUpdates() async {
-    const repo = 'shovin12leo/Hospital-Management-System-HMS-';
+    const repo = 'shovinmd/Design-and-Development-of-Gem-Buddy-An-ESP32-Based-Smart-Desktop-Companion';
 
     setState(() {
       _isUploading = true;
