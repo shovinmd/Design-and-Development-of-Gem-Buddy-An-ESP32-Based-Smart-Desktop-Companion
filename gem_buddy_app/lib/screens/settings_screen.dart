@@ -605,7 +605,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: GemColors.cardBackground,
+        backgroundColor: GemColors.bgPrimary,
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
