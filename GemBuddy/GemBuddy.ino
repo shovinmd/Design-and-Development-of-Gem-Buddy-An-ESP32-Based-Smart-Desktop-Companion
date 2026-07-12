@@ -480,7 +480,7 @@ void refreshSensors(bool force = false) {
     rt.ambientDark = rt.ldrRaw < 1600;
 
     if (!force && !wasDark && rt.ambientDark) {
-      if (!settings.lampState) {
+      if (isNightTime() && !settings.lampState) {
         settings.lampState = true;
         settings.lampMode = LAMP_STATIC;
         saveSettings();
@@ -1359,7 +1359,7 @@ void updateFaceAnimation() {
   if (settings.monitoringEnabled) {
     rt.picaioMood = 3; // Angry / Alert
     rt.faceMode = FACE_DAY; // Ensure eyes are visible
-  } else if (isNightTime() && rt.ambientDark) {
+  } else if (rt.ambientDark) {
     rt.picaioMood = 2; // Sleeping / Closed
     rt.faceMode = FACE_NIGHT;
   } else if (isNightTime() && !rt.ambientDark) {
