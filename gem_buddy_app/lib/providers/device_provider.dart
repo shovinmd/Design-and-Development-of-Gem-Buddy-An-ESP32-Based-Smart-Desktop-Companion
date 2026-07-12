@@ -223,11 +223,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     });
 
     return DeviceState(
-      alarms: [
-        GemAlarm(enabled: true, hour: 6, minute: 30, name: 'Morning Alarm'),
-        GemAlarm(enabled: false, hour: 8, minute: 0, name: 'Meditation'),
-        GemAlarm(enabled: false, hour: 22, minute: 0, name: 'Sleep Wind-down'),
-      ],
+      alarms: const [],
     );
   }
 
@@ -237,16 +233,24 @@ class DeviceNotifier extends Notifier<DeviceState> {
       final savedBrokerIp = prefs.getString('saved_broker_ip');
       final savedDeviceIp = prefs.getString('saved_device_ip');
       
-      if (savedBrokerIp != null || savedDeviceIp != null) {
-        state = state.copyWith(
-          brokerIpAddress: savedBrokerIp ?? state.brokerIpAddress,
-          ipAddress: savedDeviceIp ?? state.ipAddress,
-        );
-        
-        final brokerToConnect = savedBrokerIp ?? state.brokerIpAddress;
-        if (brokerToConnect.isNotEmpty) {
-          connectToBroker(brokerToConnect);
-        }
+      List<GemAlarm> localAlarms = [];
+      final savedAlarmsStr = prefs.getString('saved_alarms');
+      if (savedAlarmsStr != null) {
+        try {
+          final List<dynamic> decoded = json.decode(savedAlarmsStr);
+          localAlarms = decoded.map((item) => GemAlarm.fromJson(item as Map<String, dynamic>)).toList();
+        } catch (_) {}
+      }
+
+      state = state.copyWith(
+        brokerIpAddress: savedBrokerIp ?? state.brokerIpAddress,
+        ipAddress: savedDeviceIp ?? state.ipAddress,
+        alarms: localAlarms.isNotEmpty ? localAlarms : state.alarms,
+      );
+      
+      final brokerToConnect = savedBrokerIp ?? state.brokerIpAddress;
+      if (brokerToConnect.isNotEmpty) {
+        connectToBroker(brokerToConnect);
       }
     } catch (e) {
       if (kDebugMode) print("Failed to load saved connections: $e");
@@ -367,10 +371,14 @@ class DeviceNotifier extends Notifier<DeviceState> {
       }
 
       List<GemAlarm> fetchedAlarms = [];
-      if (data['alarms'] != null) {
+      if (data.containsKey('alarms') && data['alarms'] != null) {
         fetchedAlarms = (data['alarms'] as List)
-            .map((item) => GemAlarm.fromJson(item))
+            .map((item) => GemAlarm.fromJson(item as Map<String, dynamic>))
             .toList();
+            
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('saved_alarms', json.encode(fetchedAlarms.map((a) => a.toJson()).toList()));
+        });
       }
 
       final bool isScanningOnHardware = data['faceMode'] == 7;
@@ -406,7 +414,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
         monitoringEnabled: data['monitoringEnabled'] ?? state.monitoringEnabled,
         faceMode: data['faceMode'] ?? state.faceMode,
         timeValid: data['timeValid'] ?? state.timeValid,
-        alarms: fetchedAlarms.isNotEmpty ? fetchedAlarms : state.alarms,
+        alarms: data.containsKey('alarms') ? fetchedAlarms : state.alarms,
         isConnected: true,
         isConnecting: false,
         isHeartScanning: isScanningOnHardware,
