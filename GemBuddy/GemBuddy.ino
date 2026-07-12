@@ -374,6 +374,15 @@ bool isNightTime() {
   return tmv.tm_hour >= 22 || tmv.tm_hour < 6;
 }
 
+bool isLampNightTime() {
+  if (!validClock()) return false;
+  time_t utc = time(nullptr);
+  time_t local = utc + (settings.timezoneOffsetMinutes * 60);
+  struct tm tmv;
+  gmtime_r(&local, &tmv);
+  return tmv.tm_hour >= 18 || tmv.tm_hour < 6; // From 6 PM to 6 AM
+}
+
 bool isEveningTime() {
   if (!validClock()) return false;
   time_t utc = time(nullptr);
@@ -487,7 +496,7 @@ void refreshSensors(bool force = false) {
 
     if (!force) {
       if (!wasDark && rt.ambientDark) {
-        if (isNightTime() && !settings.lampState) {
+        if (isLampNightTime() && !settings.lampState) {
           settings.lampState = true;
           settings.lampMode = LAMP_STATIC;
           setLampOn();
@@ -1513,37 +1522,16 @@ void updatePeriodicGreeting() {
   uint32_t now = millis();
 
   if (rt.greetingAnimStep == 0) {
-    if (now - rt.lastGreetingAt >= 60000) {
+    if (now - rt.lastGreetingAt >= 2000) {
       rt.greetingAnimStep = 1;
-      rt.greetingAnimTimer = now + 1500;
-      rt.picaioXp = 2; // Look Left
-    }
-  } else if (rt.greetingAnimStep == 1) {
-    rt.picaioXp = 2; // Force look left
-    if (now >= rt.greetingAnimTimer) {
-      rt.greetingAnimStep = 2;
-      rt.greetingAnimTimer = now + 1500;
-      rt.picaioXp = 30; // Look Right
-    }
-  } else if (rt.greetingAnimStep == 2) {
-    rt.picaioXp = 30; // Force look right
-    if (now >= rt.greetingAnimTimer) {
-      rt.greetingAnimStep = 3;
-      rt.greetingAnimTimer = now + 1500;
-      rt.picaioXp = 16; // Center
-    }
-  } else if (rt.greetingAnimStep == 3) {
-    rt.picaioXp = 16; // Force look center
-    if (now >= rt.greetingAnimTimer) {
-      rt.greetingAnimStep = 4;
       
-      // Trigger Bubble
+      // Trigger Bubble immediately without looking left/right
       rt.lastGreetingAt = now;
       rt.greetingBubbleActive = true;
       rt.greetingBubbleUntil = now + 4000;
-      rt.greetingIndex = random(0, 5);
+      rt.greetingIndex = random(0, 4);
     }
-  } else if (rt.greetingAnimStep == 4) {
+  } else if (rt.greetingAnimStep == 1) {
     if (rt.greetingBubbleActive && now >= rt.greetingBubbleUntil) {
       rt.greetingBubbleActive = false;
       rt.greetingAnimStep = 0;
