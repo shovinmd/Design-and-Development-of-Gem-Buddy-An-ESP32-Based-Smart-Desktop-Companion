@@ -172,32 +172,6 @@ bool argTrue(const String& value) {
 }
 
 // ── Cloud / broker helpers ─────────────────────────────────────────────────────
-// POST a webhook event to the configured broker (fire-and-forget, non-blocking).
-void triggerCloudEvent(const char* eventName) {
-  if (!settings.monitoringEnabled) return;
-  if (WiFi.status() != WL_CONNECTED) return;
-  if (strlen(settings.cloudWebhook) < 8) return;  // no URL configured
-
-  HTTPClient http;
-  http.begin(settings.cloudWebhook);
-  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-
-  String body = "event=";
-  body += eventName;
-  body += "&device=";
-  body += settings.deviceName;
-  body += "&user=";
-  body += settings.userName;
-  body += "&battery=";
-  body += String(rt.batteryPercent);
-  body += "&ldr=";
-  body += String(rt.ldrRaw);
-
-  int code = http.POST(body);
-  if (kDebugMode && code > 0) Serial.printf("[Cloud] %s → %d\n", eventName, code);
-  http.end();
-}
-
 // POST a lightweight keepalive ping to the broker's /api/ping endpoint.
 // Called every 30 s when monitoring is enabled and Wi-Fi is up.
 void sendGuardPing() {
@@ -225,7 +199,7 @@ void sendGuardPing() {
   body += String(rt.ldrRaw);
 
   int code = http.POST(body);
-  if (kDebugMode && code > 0) Serial.printf("[Ping] /api/ping → %d\n", code);
+  if (code > 0) Serial.printf("[Ping] /api/ping → %d\n", code);
   http.end();
 }
 // ──────────────────────────────────────────────────────────────────────────────
