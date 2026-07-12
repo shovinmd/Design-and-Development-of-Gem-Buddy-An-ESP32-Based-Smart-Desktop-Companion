@@ -384,20 +384,38 @@ class DeviceNotifier extends Notifier<DeviceState> {
       response = await http.get(Uri.parse('http://$activeIp/api/state'))
           .timeout(const Duration(seconds: 3));
     } catch (e) {
-      // If direct IP fails, try UDP discovery first (fast and robust on same subnet)
+      // If direct IP fails, try Hotspot IP, then UDP, then mDNS
       if (activeIp != 'gem-buddy.local') {
         try {
-          if (kDebugMode) print("Connection to $activeIp failed. Trying UDP Discovery...");
-          final discoveredIp = await _discoverDeviceUdp();
-          if (discoveredIp != null) {
-            final fallbackResponse = await http.get(Uri.parse('http://$discoveredIp/api/state'))
-                .timeout(const Duration(seconds: 2));
-            if (fallbackResponse.statusCode == 200) {
-              response = fallbackResponse;
-              activeIp = discoveredIp;
+          // 1. Try Default Hotspot IP
+          if (activeIp != '192.168.4.1') {
+            if (kDebugMode) print("Connection to $activeIp failed. Trying default hotspot IP 192.168.4.1...");
+            try {
+              final hotspotResponse = await http.get(Uri.parse('http://192.168.4.1/api/state'))
+                  .timeout(const Duration(milliseconds: 1500));
+              if (hotspotResponse.statusCode == 200) {
+                response = hotspotResponse;
+                activeIp = '192.168.4.1';
+              }
+            } catch (_) {}
+          }
+
+          // 2. Try UDP Discovery if hotspot failed
+          if (response == null) {
+            if (kDebugMode) print("Hotspot check failed. Trying UDP Discovery...");
+            final discoveredIp = await _discoverDeviceUdp();
+            if (discoveredIp != null) {
+              final fallbackResponse = await http.get(Uri.parse('http://$discoveredIp/api/state'))
+                  .timeout(const Duration(seconds: 2));
+              if (fallbackResponse.statusCode == 200) {
+                response = fallbackResponse;
+                activeIp = discoveredIp;
+              }
             }
-          } else {
-            // Fallback to mDNS hostname resolution
+          }
+
+          // 3. Fallback to mDNS
+          if (response == null) {
             if (kDebugMode) print("UDP Discovery failed. Trying fallback hostname gem-buddy.local...");
             final fallbackResponse = await http.get(Uri.parse('http://gem-buddy.local/api/state'))
                 .timeout(const Duration(seconds: 2));
