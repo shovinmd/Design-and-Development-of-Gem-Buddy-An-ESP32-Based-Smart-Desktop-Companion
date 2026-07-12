@@ -684,6 +684,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await settingsNotifier.updateUserName(_nameController.text.trim());
       await settingsNotifier.updateDeviceNickname(_nicknameController.text.trim());
 
+      final prefs = await SharedPreferences.getInstance();
+      if (_ssidController.text.trim().isNotEmpty) {
+        await prefs.setString('saved_wifi_ssid', _ssidController.text.trim());
+        await prefs.setString('saved_wifi_pass', _passController.text.trim());
+      }
+
       await deviceNotifier.saveSettings(
         userName: _nameController.text.trim(),
         deviceName: _nicknameController.text.trim(),
