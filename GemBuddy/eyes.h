@@ -885,7 +885,7 @@ static const unsigned char PROGMEM eye15d[] =
 
 // [mood][pos][l/r]
 const unsigned char *peyes[][3][2]={
- { {   eye4,   eye4},{   eye5,   eye5},{   eye6,   eye6} },
+ { {   eye1,   eye1},{   eye2,   eye2},{   eye3,   eye3} },
  { {   eye1,   eye1},{   eye2,   eye2},{   eye3,   eye3} },
  { {   eye0,   eye0},{   eye0,   eye0},{   eye0,   eye0} },
  { { eye10d, eye10i},{ eye11d, eye11i},{ eye12d, eye12i} },

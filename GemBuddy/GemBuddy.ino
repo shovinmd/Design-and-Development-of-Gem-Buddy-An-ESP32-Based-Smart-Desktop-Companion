@@ -88,6 +88,8 @@ struct RuntimeState {
   bool greetingBubbleActive = false;
   uint32_t greetingBubbleUntil = 0;
   uint8_t greetingIndex = 0;
+  uint8_t greetingAnimStep = 0;
+  uint32_t greetingAnimTimer = 0;
 
   bool timeOverlayActive = false;
   uint32_t timeOverlayUntil = 0;
@@ -1403,10 +1405,10 @@ void updateFaceAnimation() {
   if (rt.picaioXd < -4) rt.picaioXd = -3;
   if (rt.picaioXd > 4) rt.picaioXd = 3;
 
-  // Auto-cycle gaze direction randomly
+  // Auto-cycle gaze direction randomly (only if not doing greeting animation)
   static uint32_t lastGazeCycleMs = 0;
   static uint32_t nextGazeIntervalMs = 4000;
-  if (now - lastGazeCycleMs >= nextGazeIntervalMs) {
+  if (rt.greetingAnimStep == 0 && (now - lastGazeCycleMs >= nextGazeIntervalMs)) {
     lastGazeCycleMs = now;
     nextGazeIntervalMs = random(4000, 8000);
     int randDir = random(0, 3);
@@ -1447,21 +1449,46 @@ void updateWelcomeState() {
 }
 
 void updatePeriodicGreeting() {
+  if (settings.monitoringEnabled || rt.faceMode != FACE_DAY) return;
+  
   if (rt.welcomeActive || rt.menuOpen || rt.faceMode == FACE_MENU || rt.faceMode == FACE_WIFI_SETUP || rt.faceMode == FACE_CONFIGURING) {
     rt.greetingBubbleActive = false;
+    rt.greetingAnimStep = 0;
     return;
   }
 
   uint32_t now = millis();
-  // Trigger every 4 seconds (2 seconds on, 2 seconds off)
-  if (now - rt.lastGreetingAt >= 5000) {
-    rt.lastGreetingAt = now;
-    rt.greetingBubbleActive = true;
-    rt.greetingBubbleUntil = now + 2000;
-    rt.greetingIndex = (rt.greetingIndex + 1) % 5;
-  }
-  if (rt.greetingBubbleActive && now >= rt.greetingBubbleUntil) {
-    rt.greetingBubbleActive = false;
+
+  if (rt.greetingAnimStep == 0) {
+    if (now - rt.lastGreetingAt >= 60000) {
+      rt.greetingAnimStep = 1;
+      rt.greetingAnimTimer = now + 1500;
+      rt.picaioXp = 2; // Look Left
+    }
+  } else if (rt.greetingAnimStep == 1) {
+    rt.picaioXp = 2; // Force look left
+    if (now >= rt.greetingAnimTimer) {
+      rt.greetingAnimStep = 2;
+      rt.greetingAnimTimer = now + 1500;
+      rt.picaioXp = 30; // Look Right
+    }
+  } else if (rt.greetingAnimStep == 2) {
+    rt.picaioXp = 30; // Force look right
+    if (now >= rt.greetingAnimTimer) {
+      rt.greetingAnimStep = 3;
+      rt.picaioXp = 16; // Center
+      
+      // Trigger Bubble
+      rt.lastGreetingAt = now;
+      rt.greetingBubbleActive = true;
+      rt.greetingBubbleUntil = now + 4000;
+      rt.greetingIndex = random(0, 5);
+    }
+  } else if (rt.greetingAnimStep == 3) {
+    if (rt.greetingBubbleActive && now >= rt.greetingBubbleUntil) {
+      rt.greetingBubbleActive = false;
+      rt.greetingAnimStep = 0;
+    }
   }
 }
 
@@ -1800,6 +1827,51 @@ void handleRoot() {
   server.send(200, "text/html", html);
 }
 
+void handleUpdateUI() {
+  String html;
+  html.reserve(4000);
+  String repoUrl = server.hasArg("url") ? server.arg("url") : "";
+  html += "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
+  html += "<meta charset='utf-8'><title>GEM Firmware Update</title><style>";
+  html += "body{font-family:system-ui,-apple-system,sans-serif;background:#09111f;color:#eef3ff;padding:20px}";
+  html += ".wrap{max-width:500px;margin:0 auto;background:#1b2a44;padding:20px;border-radius:12px}";
+  html += "input{width:100%;padding:10px;margin:10px 0;box-sizing:border-box;border-radius:6px;border:none}";
+  html += "button{width:100%;padding:12px;background:#3b82f6;color:white;border:none;border-radius:6px;font-weight:bold;cursor:pointer}";
+  html += "button:disabled{background:#555}";
+  html += "#status{margin-top:15px;font-size:14px;color:#a3b8cc}";
+  html += "</style></head><body><div class='wrap'>";
+  html += "<h2>🚀 GEM Web OTA</h2>";
+  html += "<p>Fetching firmware directly from GitHub via your browser.</p>";
+  html += "<input type='text' id='binUrl' value='" + repoUrl + "' placeholder='GitHub .bin URL' />";
+  html += "<button id='btn' onclick='startUpdate()'>Download & Flash GEM</button>";
+  html += "<div id='status'></div>";
+  html += "<script>";
+  html += "async function startUpdate() {";
+  html += "  const url = document.getElementById('binUrl').value;";
+  html += "  const btn = document.getElementById('btn');";
+  html += "  const stat = document.getElementById('status');";
+  html += "  if(!url) return alert('Enter URL');";
+  html += "  btn.disabled = true;";
+  html += "  stat.innerText = 'Downloading binary from GitHub...';";
+  html += "  try {";
+  html += "    const res = await fetch(url);";
+  html += "    if(!res.ok) throw new Error('GitHub download failed');";
+  html += "    const blob = await res.blob();";
+  html += "    stat.innerText = 'Flashing ESP32 (do not close page)...';";
+  html += "    const formData = new FormData();";
+  html += "    formData.append('file', blob, 'update.bin');";
+  html += "    const uploadRes = await fetch('/api/update', { method: 'POST', body: formData });";
+  html += "    if(!uploadRes.ok) throw new Error('Flash failed');";
+  html += "    stat.innerText = '✅ Flash Complete! GEM is rebooting.';";
+  html += "  } catch(e) {";
+  html += "    stat.innerText = '❌ Error: ' + e.message;";
+  html += "    btn.disabled = false;";
+  html += "  }";
+  html += "}";
+  html += "</script></div></body></html>";
+  server.send(200, "text/html", html);
+}
+
 
 void applySettingsFromRequest() {
   bool oldMonitoring = settings.monitoringEnabled;
@@ -2055,6 +2127,7 @@ void setupServer() {
   server.on("/api/time", HTTP_ANY, handleTimeSet);
   server.on("/api/factory-reset", HTTP_GET, handleFactoryReset);
   server.on("/api/heart", HTTP_ANY, handleHeartApi);
+  server.on("/update", HTTP_GET, handleUpdateUI);
   
   // OTA firmware update endpoint
   server.on("/api/update", HTTP_POST, []() {

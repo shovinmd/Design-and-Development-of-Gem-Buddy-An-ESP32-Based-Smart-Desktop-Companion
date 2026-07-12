@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../theme/colors.dart';
 import '../theme/glass_styles.dart';
 import '../widgets/glass_card.dart';
@@ -573,9 +574,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     onPressed: () {
                       Navigator.of(ctx).pop();
-                      _downloadAndInstallFirmware(downloadUrl, assetName);
+                      _openUpdateWebview(downloadUrl);
                     },
-                    child: const Text('Install Update', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: const Text('Open Update Page', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
               );
@@ -599,60 +600,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
     }
   }
-
-  Future<void> _downloadAndInstallFirmware(String downloadUrl, String filename) async {
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-      _uploadStatus = 'Downloading firmware update...';
-    });
-
+  Future<void> _openUpdateWebview(String downloadUrl) async {
+    final ipAddress = ref.read(deviceProvider).ipAddress;
+    final url = Uri.parse('http://$ipAddress/update?url=${Uri.encodeComponent(downloadUrl)}');
+    
     try {
-      final response = await http.get(Uri.parse(downloadUrl));
-      if (response.statusCode == 200) {
-        final bytes = response.bodyBytes;
-
-        setState(() {
-          _uploadStatus = 'Initiating OTA Flash...';
-        });
-
-        final deviceNotifier = ref.read(deviceProvider.notifier);
-        final success = await deviceNotifier.uploadFirmware(
-          bytes,
-          filename,
-          onProgress: (progress) {
-            setState(() {
-              _uploadProgress = progress;
-              _uploadStatus = progress >= 1.0 
-                  ? 'Finalizing reboot...' 
-                  : 'Uploading firmware to GEM...';
-            });
-          },
-        );
-
-        setState(() {
-          _isUploading = false;
-        });
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(success ? 'Firmware update successful! GEM is rebooting.' : 'Firmware update failed.'),
-              backgroundColor: success ? GemColors.statusActive : GemColors.statusAlert,
-            ),
-          );
-        }
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.inAppWebView);
       } else {
-        throw Exception('Download failed with status: ${response.statusCode}');
+        throw Exception('Could not launch $url');
       }
     } catch (e) {
-      setState(() {
-        _isUploading = false;
-      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update firmware: $e'),
+            content: Text('Error opening update page: $e'),
             backgroundColor: GemColors.statusAlert,
           ),
         );

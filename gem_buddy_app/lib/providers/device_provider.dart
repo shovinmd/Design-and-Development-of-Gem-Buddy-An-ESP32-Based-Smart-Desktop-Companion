@@ -965,7 +965,8 @@ class DeviceNotifier extends Notifier<DeviceState> {
           state = state.copyWith(isBrokerConnected: false, appOnline: false);
           if (kDebugMode) print("WS error: $err");
           _appPingTimer?.cancel();
-          // Reconnect after 5 seconds
+          _wsChannel = null;
+          // Auto-reconnect after 5 seconds
           Future.delayed(const Duration(seconds: 5), () {
             if (_wsChannel == null && state.brokerIpAddress.isNotEmpty) {
               connectToBroker(brokerIp);
@@ -975,7 +976,14 @@ class DeviceNotifier extends Notifier<DeviceState> {
         onDone: () {
           state = state.copyWith(isBrokerConnected: false, appOnline: false);
           _appPingTimer?.cancel();
+          _wsChannel = null;
           if (kDebugMode) print("WS channel closed.");
+          // Auto-reconnect after 5 seconds
+          Future.delayed(const Duration(seconds: 5), () {
+            if (_wsChannel == null && state.brokerIpAddress.isNotEmpty) {
+              connectToBroker(brokerIp);
+            }
+          });
         },
       );
     } catch (e) {
@@ -991,7 +999,10 @@ class DeviceNotifier extends Notifier<DeviceState> {
 
   void disconnectBroker() {
     _closeSocketOnly();
-    state = state.copyWith(isBrokerConnected: false);
+    state = state.copyWith(isBrokerConnected: false, brokerIpAddress: '');
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove('saved_broker_ip');
+    });
   }
 
   Future<bool> uploadFirmware(List<int> bytes, String filename, {Function(double)? onProgress}) async {
