@@ -1351,11 +1351,11 @@ void drawFaceScreen() {
       }
     }
     u8g2.drawStr(8, 57, msg);
-  } 
-  else if (rt.faceMode == FACE_NIGHT) {
-    drawZzz();
+  } else if (rt.faceMode == FACE_NIGHT) {
     u8g2.setFont(u8g2_font_5x7_tr);
-    u8g2.drawStr(12, 57, "Sleeping...");
+    char sleepMsg[32];
+    snprintf(sleepMsg, sizeof(sleepMsg), "Have a good sleep %s", settings.userName);
+    u8g2.drawStr(12, 57, sleepMsg);
   }
 
   u8g2.sendBuffer();
@@ -1524,16 +1524,37 @@ void updatePeriodicGreeting() {
   uint32_t now = millis();
 
   if (rt.greetingAnimStep == 0) {
-    if (now - rt.lastGreetingAt >= 2000) {
+    if (now - rt.lastGreetingAt >= 4000) {
       rt.greetingAnimStep = 1;
+      rt.greetingAnimTimer = now + 1000;
+      rt.picaioXp = 2; // Look Left
+    }
+  } else if (rt.greetingAnimStep == 1) {
+    rt.picaioXp = 2; // Force look left
+    if (now >= rt.greetingAnimTimer) {
+      rt.greetingAnimStep = 2;
+      rt.greetingAnimTimer = now + 1000;
+      rt.picaioXp = 30; // Look Right
+    }
+  } else if (rt.greetingAnimStep == 2) {
+    rt.picaioXp = 30; // Force look right
+    if (now >= rt.greetingAnimTimer) {
+      rt.greetingAnimStep = 3;
+      rt.greetingAnimTimer = now + 1000;
+      rt.picaioXp = 16; // Center
+    }
+  } else if (rt.greetingAnimStep == 3) {
+    rt.picaioXp = 16; // Force look center
+    if (now >= rt.greetingAnimTimer) {
+      rt.greetingAnimStep = 4;
       
-      // Trigger Bubble immediately without looking left/right
+      // Trigger Bubble
       rt.lastGreetingAt = now;
       rt.greetingBubbleActive = true;
       rt.greetingBubbleUntil = now + 4000;
       rt.greetingIndex = random(0, 4);
     }
-  } else if (rt.greetingAnimStep == 1) {
+  } else if (rt.greetingAnimStep == 4) {
     if (rt.greetingBubbleActive && now >= rt.greetingBubbleUntil) {
       rt.greetingBubbleActive = false;
       rt.greetingAnimStep = 0;
