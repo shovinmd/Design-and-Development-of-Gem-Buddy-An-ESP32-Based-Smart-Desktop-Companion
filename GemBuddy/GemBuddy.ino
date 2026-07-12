@@ -505,9 +505,9 @@ void refreshSensors(bool force = false) {
     if (!force && oldLdr > 0 && settings.monitoringEnabled) {
       int diff = (int)rt.ldrRaw - (int)oldLdr;
       if (diff < -800) {
-        triggerCloudEvent("shadow-detected");
+        triggerSecurityAlarm("shadow-detected");
       } else if (diff > 800) {
-        triggerCloudEvent("flash-detected");
+        triggerSecurityAlarm("flash-detected");
       }
     }
   }
@@ -608,9 +608,26 @@ void triggerAlarm(uint8_t idx) {
   rt.petActive = false;
   settings.lampState = true;
   settings.lampMode = LAMP_BREATHING;
-  rt.lampNotificationFlash = true;
   rt.lampNotificationUntil = millis() + 60000UL;
   triggerCloudEvent("alarm");
+}
+
+void triggerSecurityAlarm(const char* eventName) {
+  triggerCloudEvent(eventName);
+
+  rt.alarmActive = true;
+  rt.alarmUntil = millis() + 300000UL; // Rings for 300 seconds (5 mins)
+  rt.alarmIndex = 254; // special index for security alarm
+  rt.alarmToneStep = 0;
+  rt.alarmToneStepAt = 0;
+  rt.faceMode = FACE_ALARM;
+  rt.timeOverlayActive = false;
+  rt.menuOpen = false;
+  rt.petActive = false;
+  settings.lampState = true;
+  settings.lampMode = LAMP_FLASH;
+  rt.lampNotificationFlash = true;
+  rt.lampNotificationUntil = millis() + 300000UL;
 }
 
 void checkAlarms() {
@@ -653,7 +670,11 @@ void updateAlarmRuntime() {
     }
 
     uint16_t note = 0;
-    if (hr >= 5 && hr < 12) {
+    if (rt.alarmIndex == 254) {
+      // Security siren: fast alternating high/low pitch
+      note = (rt.alarmToneStep % 2 == 0) ? 2000 : 1000;
+      rt.alarmToneStepAt = now + 150;
+    } else if (hr >= 5 && hr < 12) {
       // Morning (Wake Up): Cheerful rising sunrise arpeggio
       static const uint16_t morningNotes[] = { 523, 587, 659, 698, 784, 880, 988, 1047, 988, 880, 784, 698, 659, 587, 523, 0 };
       note = morningNotes[rt.alarmToneStep % 16];
@@ -1492,7 +1513,11 @@ void handleTouchInput() {
     rt.touch.pressed = true;
     rt.touch.pressedAt = now;
     rt.touch.longHandled = false;
-    triggerCloudEvent("touch-down");
+    if (settings.monitoringEnabled) {
+      triggerSecurityAlarm("touch-down");
+    } else {
+      triggerCloudEvent("touch-down");
+    }
   }
 
   // Detect long touch while holding
@@ -1811,7 +1836,16 @@ void applySettingsFromRequest() {
 
   if (server.hasArg("lampMode")) settings.lampMode = (uint8_t)server.arg("lampMode").toInt();
   if (server.hasArg("lampBrightness")) settings.lampBrightness = (uint8_t)server.arg("lampBrightness").toInt();
-  if (server.hasArg("lampState")) settings.lampState = argTrue(server.arg("lampState"));
+  if (server.hasArg("lampState")) {
+    settings.lampState = argTrue(server.arg("lampState"));
+    if (!settings.lampState && rt.alarmActive) {
+      rt.alarmActive = false;
+      rt.alarmIndex = 255;
+      noTone(PIN_BUZZER);
+      rt.faceMode = FACE_DAY;
+      setAllLeds(0);
+    }
+  }
   if (server.hasArg("ledAutoOffMinutes")) settings.ledAutoOffMinutes = (uint8_t)server.arg("ledAutoOffMinutes").toInt();
 
   settings.setupComplete = true;
