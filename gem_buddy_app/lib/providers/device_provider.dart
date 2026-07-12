@@ -331,6 +331,49 @@ class DeviceNotifier extends Notifier<DeviceState> {
     } catch (_) {}
   }
 
+  Future<String?> _discoverDeviceUdp() async {
+    try {
+      final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      socket.broadcastEnabled = true;
+      String? discoveredIp;
+      bool completed = false;
+      
+      final completer = Completer<String?>();
+      
+      socket.listen((RawSocketEvent event) {
+        if (event == RawSocketEvent.read) {
+          Datagram? datagram = socket.receive();
+          if (datagram != null) {
+            String msg = String.fromCharCodes(datagram.data);
+            if (msg.startsWith("GEM_ACK:")) {
+              discoveredIp = msg.substring(8);
+              if (!completed) {
+                completed = true;
+                completer.complete(discoveredIp);
+              }
+            }
+          }
+        }
+      });
+      
+      socket.send("GEM_DISCOVER".codeUnits, InternetAddress("255.255.255.255"), 8266);
+      
+      Timer(const Duration(seconds: 1), () {
+        if (!completed) {
+          completed = true;
+          completer.complete(null);
+        }
+      });
+      
+      final result = await completer.future;
+      socket.close();
+      return result;
+    } catch (e) {
+      if (kDebugMode) print("UDP Discovery failed: $e");
+      return null;
+    }
+  }
+
   Future<void> fetchDeviceState() async {
     if (state.isSimulated) return;
     
@@ -341,18 +384,30 @@ class DeviceNotifier extends Notifier<DeviceState> {
       response = await http.get(Uri.parse('http://$activeIp/api/state'))
           .timeout(const Duration(seconds: 3));
     } catch (e) {
-      // If direct IP fails and we aren't already trying gem-buddy.local, fallback to mDNS hostname resolution
+      // If direct IP fails, try UDP discovery first (fast and robust on same subnet)
       if (activeIp != 'gem-buddy.local') {
         try {
-          if (kDebugMode) print("Connection to $activeIp failed. Trying fallback hostname gem-buddy.local...");
-          final fallbackResponse = await http.get(Uri.parse('http://gem-buddy.local/api/state'))
-              .timeout(const Duration(seconds: 3));
-          if (fallbackResponse.statusCode == 200) {
-            response = fallbackResponse;
-            activeIp = 'gem-buddy.local';
+          if (kDebugMode) print("Connection to $activeIp failed. Trying UDP Discovery...");
+          final discoveredIp = await _discoverDeviceUdp();
+          if (discoveredIp != null) {
+            final fallbackResponse = await http.get(Uri.parse('http://$discoveredIp/api/state'))
+                .timeout(const Duration(seconds: 2));
+            if (fallbackResponse.statusCode == 200) {
+              response = fallbackResponse;
+              activeIp = discoveredIp;
+            }
+          } else {
+            // Fallback to mDNS hostname resolution
+            if (kDebugMode) print("UDP Discovery failed. Trying fallback hostname gem-buddy.local...");
+            final fallbackResponse = await http.get(Uri.parse('http://gem-buddy.local/api/state'))
+                .timeout(const Duration(seconds: 2));
+            if (fallbackResponse.statusCode == 200) {
+              response = fallbackResponse;
+              activeIp = 'gem-buddy.local';
+            }
           }
         } catch (err) {
-          if (kDebugMode) print("Fallback to gem-buddy.local failed: $err");
+          if (kDebugMode) print("Fallback connections failed: $err");
         }
       }
     }
