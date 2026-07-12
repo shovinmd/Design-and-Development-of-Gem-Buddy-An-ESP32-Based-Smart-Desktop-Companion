@@ -2111,8 +2111,6 @@ void setupNetworking() {
       }
       
       udp.begin(8266);
-
-      rt.needsNetworkRestart = false;
     } else {
       Serial.println("WiFi Connection Failed!");
       // Hotspot is already started, so we don't need to start a fallback.
