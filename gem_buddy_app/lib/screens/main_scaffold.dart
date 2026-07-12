@@ -22,6 +22,19 @@ class MainScaffold extends ConsumerStatefulWidget {
 
 class _MainScaffoldState extends ConsumerState<MainScaffold> {
   int _currentIndex = 0;
+  late PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   final List<Widget> _pages = const [
     HomeScreen(),
@@ -61,8 +74,13 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
           Positioned.fill(
             child: showOnboarding 
                 ? const OnboardingScreen()
-                : IndexedStack(
-                    index: _currentIndex,
+                : PageView(
+                    controller: _pageController,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentIndex = index;
+                      });
+                    },
                     children: _pages,
                   ),
           ),
@@ -76,9 +94,11 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
               child: FloatingGlassNavBar(
                 currentIndex: _currentIndex,
                 onTap: (index) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
+                  _pageController.animateToPage(
+                    index,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
                 },
               ),
             ),
