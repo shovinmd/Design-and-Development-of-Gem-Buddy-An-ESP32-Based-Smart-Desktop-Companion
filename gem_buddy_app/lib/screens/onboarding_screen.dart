@@ -21,6 +21,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _wifiPassController = TextEditingController();
   
   String _selectedTimezone = 'Asia/Kolkata';
+  int _hotspotTimeout = 20;
   final List<Map<String, dynamic>> _timezones = [
     {'label': 'Asia/Kolkata', 'offset': 330},
     {'label': 'UTC', 'offset': 0},
@@ -102,12 +103,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final tzMatch = _timezones.firstWhere((tz) => tz['label'] == _selectedTimezone);
     
     // Save to the physical/simulated device via network call
-    final success = await deviceNotifier.saveSettings(
+    final error = await deviceNotifier.saveSettings(
       userName: _nameController.text.trim(),
       deviceName: _nicknameController.text.trim(),
       wifiSsid: _wifiSsidController.text.isNotEmpty ? _wifiSsidController.text.trim() : null,
       wifiPass: _wifiPassController.text.isNotEmpty ? _wifiPassController.text : null,
       wifiEnabled: _wifiSsidController.text.isNotEmpty,
+      hotspotTimeoutMinutes: _hotspotTimeout,
       timezoneLabel: tzMatch['label'] as String,
       timezoneOffsetMinutes: tzMatch['offset'] as int,
     );
@@ -117,7 +119,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _isSubmitting = false;
       });
 
-      if (success) {
+      if (error == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✨ Connection established! GEM is synced.'),
@@ -126,8 +128,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ Device saved in offline standby mode.'),
+          SnackBar(
+            content: Text('⚠️ Setup: $error'),
             backgroundColor: GemColors.statusWarning,
           ),
         );
@@ -410,6 +412,46 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   label: 'Wi-Fi Password',
                   icon: Icons.lock_outline_rounded,
                   obscureText: true,
+                ),
+                const SizedBox(height: 12),
+
+                // Hotspot Hosting Window Input
+                DropdownButtonFormField<int>(
+                  initialValue: _hotspotTimeout,
+                  dropdownColor: GemColors.bgSecondary,
+                  style: const TextStyle(
+                    color: GemColors.textPrimary,
+                    fontFamily: 'monospace',
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Hotspot Hosting Window',
+                    labelStyle: const TextStyle(color: GemColors.textSecondary),
+                    prefixIcon: const Icon(Icons.wifi_tethering_rounded, color: GemColors.accentBlue),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.04),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: GemColors.accentBlue.withValues(alpha: 0.2)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: GemColors.accentBlue.withValues(alpha: 0.1)),
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem<int>(value: 0, child: Text('Always On')),
+                    DropdownMenuItem<int>(value: 20, child: Text('20 min')),
+                    DropdownMenuItem<int>(value: 40, child: Text('40 min')),
+                    DropdownMenuItem<int>(value: 60, child: Text('1 hr')),
+                    DropdownMenuItem<int>(value: 120, child: Text('2 hr')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _hotspotTimeout = val;
+                      });
+                    }
+                  },
                 ),
               ],
             ),

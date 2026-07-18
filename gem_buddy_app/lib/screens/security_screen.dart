@@ -92,7 +92,7 @@ class SecurityScreen extends ConsumerWidget {
                             activeTrackColor: GemColors.statusActive.withValues(alpha: 0.3),
                             inactiveThumbColor: GemColors.textSecondary,
                             inactiveTrackColor: Colors.black.withValues(alpha: 0.05),
-                            onChanged: (val) {
+                            onChanged: (val) async {
                               if (val && !deviceState.deviceOnline && !deviceState.isSimulated) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
@@ -102,7 +102,15 @@ class SecurityScreen extends ConsumerWidget {
                                 );
                                 return;
                               }
-                              deviceNotifier.toggleBrokerGuardMode(val);
+                              final error = await deviceNotifier.toggleBrokerGuardMode(val);
+                              if (error != null && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Guard Mode error: $error'),
+                                    backgroundColor: GemColors.statusAlert,
+                                  )
+                                );
+                              }
                             },
                           ),
                         ],
@@ -355,9 +363,8 @@ class SecurityScreen extends ConsumerWidget {
                             final log = deviceState.securityLogs[index];
                             final event = log['event'] ?? 'unknown';
                             final timestampStr = log['timestamp'] ?? '';
-                            final battery = log['battery'] ?? 100;
                             final ldr = log['ldr'] ?? 2048;
-                            
+
                             // Format timestamp nicely
                             String formattedTime = '';
                             try {
@@ -374,19 +381,25 @@ class SecurityScreen extends ConsumerWidget {
                             IconData iconData = Icons.info_outline;
                             Color iconColor = GemColors.textSecondary;
                             String displayTitle = event;
+                            String displaySubtitle = 'Light level: $ldr';
 
                             if (event == 'shadow-detected') {
                               iconData = Icons.nights_stay_rounded;
                               iconColor = GemColors.statusAlert;
                               displayTitle = 'Intruder Shadow Detected';
+                              displaySubtitle = 'Light suddenly dropped — LDR reading: $ldr';
                             } else if (event == 'flash-detected') {
                               iconData = Icons.flash_on_rounded;
                               iconColor = GemColors.statusWarning;
-                              displayTitle = 'Sudden Flash Detected';
+                              displayTitle = 'Sudden Flash / Light Spike';
+                              displaySubtitle = 'Unexpected bright light detected — LDR reading: $ldr';
                             } else if (event == 'touch-down' || event == 'long-touch') {
                               iconData = Icons.touch_app_rounded;
                               iconColor = GemColors.accentPurple;
-                              displayTitle = 'Physical Touch Intercept';
+                              displayTitle = event == 'long-touch'
+                                  ? 'Sustained Touch Detected'
+                                  : 'Physical Touch Intercept';
+                              displaySubtitle = 'GEM body was physically touched — LDR: $ldr';
                             }
 
                             return Row(
@@ -411,7 +424,7 @@ class SecurityScreen extends ConsumerWidget {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        'LDR: $ldr | Battery: $battery%',
+                                        displaySubtitle,
                                         style: const TextStyle(color: GemColors.textSecondary, fontSize: 11),
                                       ),
                                     ],

@@ -26,7 +26,7 @@ constexpr uint8_t PIN_BUZZER = 33;
 constexpr const char* GEM_DEVICE_PREFIX = "GEM";
 constexpr const char* GEM_PREF_NAMESPACE = "gembuddy";
 constexpr uint32_t GEM_SETTINGS_MAGIC = 0x47454D42; // GEMB
-constexpr uint16_t GEM_SETTINGS_VERSION = 3;
+constexpr uint16_t GEM_SETTINGS_VERSION = 4;
 
 // ---------------- Timing ----------------
 constexpr uint32_t BOOT_WELCOME_MS = 4000;
@@ -84,6 +84,7 @@ struct GemSettings {
   bool wifiEnabled = false;
   bool setupComplete = false;
   bool hotspotEnabled = false;
+  uint8_t hotspotTimeoutMinutes = 20;
 
   bool monitoringEnabled = false;
   char cloudWebhook[128] = "";

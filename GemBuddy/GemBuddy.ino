@@ -115,6 +115,8 @@ struct RuntimeState {
   uint32_t fingerDetectedAt = 0;
   bool pulseCalibrated = false;
   uint8_t bpmValidCount = 0;
+  int pulseHistory[60] = {0};
+  int pulseHistoryIdx = 0;
   bool alarmMissed = false;
   uint8_t missedAlarmIndex = 255;
   uint32_t lastAppRequestAt = 0;
@@ -132,6 +134,8 @@ struct RuntimeState {
   uint32_t lastCloudEvent = 0;
   bool hotspotActiveState = true;
   uint32_t hotspotStateTimer = 0;
+  bool lampManuallyOn = false;
+  bool lampLdrOn = false;
 
   int batteryPercent = 100;
   float batteryVoltage = 4.2f;
@@ -140,6 +144,10 @@ struct RuntimeState {
   bool batteryCritical = false;
   bool batterySaver = false;
   bool deepSleepReady = false;
+
+  uint8_t wakeAnimStep = 0;
+  uint32_t wakeAnimNextMs = 0;
+  uint32_t wakeOverrideUntil = 0;
 
   FaceMode faceMode = FACE_WELCOME;
   int eyeOffsetX = 0;
@@ -164,6 +172,7 @@ static const char* MENU_ITEMS[] = {
 
 constexpr uint8_t MENU_ITEM_COUNT = sizeof(MENU_ITEMS) / sizeof(MENU_ITEMS[0]);
 constexpr const char* GEM_HOTSPOT_PASSWORD = "123456789";
+constexpr const char* GEM_UPDATE_PASSWORD = "123456789";
 
 // ---------------- Helpers ----------------
 void copyText(char* dst, size_t dstSize, const char* src) {
@@ -272,6 +281,8 @@ void setAllLeds(uint8_t duty) {
 void setLampOff() {
   settings.lampState = false;
   setAllLeds(0);
+  rt.lampManuallyOn = false;
+  rt.lampLdrOn = false;
 }
 
 void setLampOn() {
@@ -303,6 +314,7 @@ void toggleLampMode() {
     setLampOff();
   } else {
     setLampOn();
+    rt.lampManuallyOn = true;
   }
   saveSettings();
   softConfirm();
@@ -320,16 +332,42 @@ void triggerCloudEvent(const char* reason) {
   http.begin(settings.cloudWebhook);
   http.addHeader("Content-Type", "application/json");
 
+  // Only send device identity, event reason, and LDR — no battery
   String payload = "{";
   payload += "\"device\":\"" + String(settings.deviceName) + "\",";
   payload += "\"user\":\"" + String(settings.userName) + "\",";
   payload += "\"reason\":\"" + String(reason) + "\",";
-  payload += "\"battery\":" + String(rt.batteryPercent) + ",";
   payload += "\"ldr\":" + String(rt.ldrRaw);
   payload += "}";
 
   http.POST(payload);
   http.end();
+}
+
+// Notify the broker that guard mode was toggled — broker pushes guard_toggle to app via WebSocket
+void sendGuardToggleEvent(bool active) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (settings.cloudWebhook[0] == '\0') return;
+
+  // Derive broker base URL from webhook URL
+  String webhook = String(settings.cloudWebhook);
+  int lastSlash = webhook.lastIndexOf('/');
+  String base = (lastSlash > 8) ? webhook.substring(0, lastSlash) : webhook;
+  String url = base + "/api/guard/toggle";
+
+  HTTPClient http;
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+
+  String payload = "{\"active\":";
+  payload += active ? "true" : "false";
+  payload += ",\"device\":\"";
+  payload += String(settings.deviceName);
+  payload += "\"}";
+
+  http.POST(payload);
+  http.end();
+  Serial.printf("[Guard] Sent toggle event: active=%d\n", active);
 }
 
 void enterDeepSleep() {
@@ -500,6 +538,7 @@ void refreshSensors(bool force = false) {
           settings.lampState = true;
           settings.lampMode = LAMP_STATIC;
           setLampOn();
+          rt.lampLdrOn = true;
           saveSettings();
         }
       } else if (wasDark && !rt.ambientDark) {
@@ -763,6 +802,8 @@ void updateHeartMode() {
   rt.lastPulseSampleAt = now;
 
   int raw = analogRead(PIN_PULSE_ADC);
+  rt.pulseHistory[rt.pulseHistoryIdx] = raw;
+  rt.pulseHistoryIdx = (rt.pulseHistoryIdx + 1) % 60;
 
   // Finger presence: sensor idle (no finger) reads near 0 or near 4095
   bool fingerNow = (raw > 200 && raw < 3900);
@@ -836,16 +877,30 @@ void updateHeartMode() {
     }
     rt.lastBeatMs = now;
 
-    // Visual + audio beat feedback
-    setAllLeds(255);
+    // Audio beat feedback
     tone(PIN_BUZZER, 1200, 35);
   }
 
-  // Falling edge — reset trigger and fade LEDs
+  // Falling edge — reset trigger
   if (rt.pulseAbove && (float)raw < rt.pulseBaseline) {
     rt.pulseAbove = false;
-    setAllLeds(0);
   }
+
+  // Real-time LED pulse feedback: map raw ADC to LED brightness using history min/max
+  int historyMin = 4095;
+  int historyMax = 0;
+  for (int i = 0; i < 60; i++) {
+    int v = rt.pulseHistory[i];
+    if (v < historyMin) historyMin = v;
+    if (v > historyMax) historyMax = v;
+  }
+  int brightness = 0;
+  if (historyMax > historyMin + 20) {
+    brightness = map(raw, historyMin, historyMax, 0, 255);
+    if (brightness < 0) brightness = 0;
+    if (brightness > 255) brightness = 255;
+  }
+  setAllLeds(brightness);
 }
 
 void openMenu() {
@@ -878,7 +933,11 @@ void activateMenuItem() {
       break;
     case 1:
       settings.lampState = !settings.lampState;
-      if (settings.lampState && settings.lampMode == 0) settings.lampMode = LAMP_STATIC;
+      rt.lampManuallyOn = settings.lampState;
+      if (settings.lampState) {
+        rt.lampLdrOn = false;
+        if (settings.lampMode == 0) settings.lampMode = LAMP_STATIC;
+      }
       saveSettings();
       break;
     case 2:
@@ -900,8 +959,26 @@ void activateMenuItem() {
       if (settings.monitoringEnabled) {
         settings.wifiEnabled = true;
         setupNetworking(); // Auto connect WiFi on Guard Mode activation
-        rt.lampNotificationFlash = true;
-        rt.lampNotificationUntil = millis() + 2500;
+        if (WiFi.status() != WL_CONNECTED) {
+          settings.monitoringEnabled = false;
+          settings.wifiEnabled = false;
+          tone(PIN_BUZZER, 150, 200);
+          delay(250);
+          tone(PIN_BUZZER, 150, 200);
+          u8g2.clearBuffer();
+          u8g2.drawRFrame(2, 2, 124, 60, 8);
+          drawCentered(25, "WiFi Connection", u8g2_font_6x10_tf);
+          drawCentered(42, "Failed!", u8g2_font_6x10_tf);
+          u8g2.sendBuffer();
+          delay(3000);
+          rt.faceMode = FACE_DAY;
+        } else {
+          rt.lampNotificationFlash = true;
+          rt.lampNotificationUntil = millis() + 2500;
+          sendGuardToggleEvent(true); // Notify broker/app that guard is now ON
+        }
+      } else {
+        sendGuardToggleEvent(false); // Notify broker/app that guard is now OFF
       }
       saveSettings();
       break;
@@ -928,7 +1005,16 @@ void activateMenuItem() {
       rt.welcomeUntil = millis() + BOOT_WELCOME_MS;
       break;
     case 7:
+      openSetupPortal(true);
       rt.faceMode = FACE_UPDATE;
+      if (settings.wifiSsid[0] != '\0' && WiFi.status() != WL_CONNECTED) {
+        Serial.println("Firmware update: connecting to station WiFi...");
+        WiFi.begin(settings.wifiSsid, settings.wifiPass);
+        uint32_t start = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
+          delay(250);
+        }
+      }
       softConfirm();
       break;
   }
@@ -964,7 +1050,14 @@ void drawFaceEyes() {
   if (x2 > 96) x2 = 96;
 
   // Draw the eyes slightly higher (y = 8) to center them better now that clock is gone
-  if (rt.isBlinking || rt.picaioMood == 2) {
+  if (rt.wakeAnimStep > 0) {
+    const unsigned char* frame = eye0;
+    if (rt.wakeAnimStep == 2) frame = eye8;
+    else if (rt.wakeAnimStep == 3) frame = eye7;
+    else if (rt.wakeAnimStep == 4) frame = eye1;
+    u8g2.drawBitmap(x1, 8, 4, 32, frame);
+    u8g2.drawBitmap(x2, 8, 4, 32, frame);
+  } else if (rt.isBlinking || rt.picaioMood == 2) {
     u8g2.drawBitmap(x1, 8, 4, 32, eye0);
     u8g2.drawBitmap(x2, 8, 4, 32, eye0);
   } else {
@@ -997,9 +1090,10 @@ void drawHearts() {
 
 void drawZzz() {
   u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(92, 20, "Z");
-  u8g2.drawStr(102, 14, "z");
-  u8g2.drawStr(110, 10, "z");
+  int stage = (millis() / 600) % 4; // 0, 1, 2, 3
+  if (stage >= 1) u8g2.drawStr(96, 22, "Z");
+  if (stage >= 2) u8g2.drawStr(104, 15, "z");
+  if (stage >= 3) u8g2.drawStr(112, 9, "z");
 }
 
 void drawTimeOverlay() {
@@ -1111,15 +1205,16 @@ void drawInfoScreen() {
   u8g2.setFont(u8g2_font_6x10_tr);
   u8g2.drawStr(10, 12, settings.deviceName);
   u8g2.setFont(u8g2_font_5x7_tr);
-  u8g2.drawStr(10, 22, "User:");
-  u8g2.drawStr(42, 22, settings.userName);
-  u8g2.drawStr(10, 30, "TZ:");
-  u8g2.drawStr(42, 30, settings.timezoneLabel);
-  u8g2.drawStr(10, 38, "Time:");
-  u8g2.drawStr(42, 38, timeBuf);
-  u8g2.drawStr(10, 46, "Date:");
-  u8g2.drawStr(42, 46, dateBuf);
-  u8g2.drawStr(10, 54, settings.setupComplete ? "Saved in flash" : "First boot setup");
+  u8g2.drawStr(10, 22, "Creator:");
+  u8g2.drawStr(55, 22, "Shovin");
+  u8g2.drawStr(10, 30, "Version:");
+  u8g2.drawStr(55, 30, "1.3");
+  u8g2.drawStr(10, 38, "Build:");
+  u8g2.drawStr(55, 38, "Jul 18 2026");
+  u8g2.drawStr(10, 46, "Time:");
+  u8g2.drawStr(55, 46, timeBuf);
+  u8g2.drawStr(10, 54, "Date:");
+  u8g2.drawStr(55, 54, dateBuf);
   u8g2.sendBuffer();
 }
 
@@ -1128,11 +1223,21 @@ void drawWiFiSetupScreen() {
   u8g2.drawRFrame(2, 2, 124, 60, 8);
   drawBatteryBar();
   u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(10, 12, "WiFi Setup Mode");
-  u8g2.setFont(u8g2_font_5x7_tr);
-  u8g2.drawStr(10, 24, "SSID: GEM Buddy");
-  u8g2.drawStr(10, 34, "Pass: 123456789");
-  u8g2.drawStr(10, 44, "IP: 192.168.4.1");
+  if (WiFi.status() == WL_CONNECTED) {
+    u8g2.drawStr(10, 12, "WiFi Connected");
+    u8g2.setFont(u8g2_font_5x7_tr);
+    String ssidStr = "SSID: " + String(settings.wifiSsid);
+    String ipStr = "IP: " + WiFi.localIP().toString();
+    u8g2.drawStr(10, 24, ssidStr.c_str());
+    u8g2.drawStr(10, 34, ipStr.c_str());
+    u8g2.drawStr(10, 44, "Guard Mode Enabled");
+  } else {
+    u8g2.drawStr(10, 12, "WiFi Setup Mode");
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.drawStr(10, 24, "SSID: GEM Buddy");
+    u8g2.drawStr(10, 34, "Pass: 123456789");
+    u8g2.drawStr(10, 44, "IP: 192.168.4.1");
+  }
   u8g2.drawStr(10, 54, "Tap touch to exit");
   u8g2.sendBuffer();
 }
@@ -1197,42 +1302,47 @@ void drawFaceScreen() {
     u8g2.drawStr(12, 14, "HEART RATE SCAN");
     u8g2.drawHLine(6, 17, 116);
 
-    // Beating heart on the left side
-    int hcx = 36;
-    int hcy = 38;
-    bool isBeating = rt.pulseAbove || (rt.lastBeatMs > 0 && (millis() - rt.lastBeatMs < 200));
-    if (isBeating) {
-      u8g2.drawDisc(hcx - 6, hcy - 4, 6);
-      u8g2.drawDisc(hcx + 6, hcy - 4, 6);
-      u8g2.drawTriangle(hcx - 12, hcy - 2, hcx + 12, hcy - 2, hcx, hcy + 12);
-    } else {
-      u8g2.drawDisc(hcx - 5, hcy - 3, 5);
-      u8g2.drawDisc(hcx + 5, hcy - 3, 5);
-      u8g2.drawTriangle(hcx - 10, hcy - 2, hcx + 10, hcy - 2, hcx, hcy + 10);
-    }
-
-    // BPM text on the right side
-    u8g2.setFont(u8g2_font_7x14_tf);
-    char bpmStr[16];
-    if (rt.bpm > 0 && (millis() - rt.lastBeatMs < 4000)) {
-      snprintf(bpmStr, sizeof(bpmStr), "%d", rt.bpm);
-    } else {
-      strcpy(bpmStr, "--");
-    }
-    u8g2.drawStr(80, 36, bpmStr);
-    u8g2.setFont(u8g2_font_5x7_tr);
-    u8g2.drawStr(80, 48, "BPM");
+    // Large Centered Graph (from x = 6 to x = 122, y = 20 to y = 52)
+    int graphX = 6;
+    int graphY = 20;
+    int graphW = 116;
+    int graphH = 32;
     
-    if (!rt.fingerPresent) {
-      u8g2.setFont(u8g2_font_4x6_tr);
-      u8g2.drawStr(74, 58, "Place Finger...");
-    } else if (!rt.pulseCalibrated) {
-      u8g2.setFont(u8g2_font_4x6_tr);
-      u8g2.drawStr(74, 58, "Calibrating...");
-    } else {
-      u8g2.setFont(u8g2_font_4x6_tr);
-      u8g2.drawStr(74, 58, "Scanning...");
+    // Find min and max in history for normalization
+    int hMin = 4095;
+    int hMax = 0;
+    for (int i = 0; i < 60; i++) {
+      if (rt.pulseHistory[i] < hMin) hMin = rt.pulseHistory[i];
+      if (rt.pulseHistory[i] > hMax) hMax = rt.pulseHistory[i];
     }
+    if (hMax == hMin) { hMin = 0; hMax = 4095; }
+    int hRange = hMax - hMin;
+    if (hRange < 150) hRange = 150; // prevent flatline noise amplification
+    
+    int prevX = -1, prevY = -1;
+    for (int i = 0; i < graphW; i++) {
+      int histIdx = (rt.pulseHistoryIdx - 60 + (i * 60 / graphW) + 60) % 60;
+      int val = rt.pulseHistory[histIdx];
+      // Normalize to graph height
+      int py = graphY + graphH - ((val - hMin) * graphH / hRange);
+      int px = graphX + i;
+      if (prevX != -1) {
+        u8g2.drawLine(prevX, prevY, px, py);
+      }
+      prevX = px;
+      prevY = py;
+    }
+    
+    const char* statusStr = "Scanning...";
+    if (!rt.fingerPresent) {
+      statusStr = "Place Finger...";
+    } else if (!rt.pulseCalibrated) {
+      statusStr = "Calibrating...";
+    }
+    
+    u8g2.setFont(u8g2_font_5x7_tr);
+    int16_t strW = u8g2.getStrWidth(statusStr);
+    u8g2.drawStr((128 - strW) / 2, 62, statusStr);
     
     u8g2.sendBuffer();
     return;
@@ -1351,6 +1461,7 @@ void drawFaceScreen() {
     char sleepMsg[32];
     snprintf(sleepMsg, sizeof(sleepMsg), "Have a good sleep %s", settings.userName);
     u8g2.drawStr(12, 57, sleepMsg);
+    drawZzz();
   }
 
   u8g2.sendBuffer();
@@ -1419,14 +1530,25 @@ void updateFaceAnimation() {
     return;
   }
 
+  // Advance wake animation if active
+  if (rt.wakeAnimStep > 0 && now >= rt.wakeAnimNextMs) {
+    rt.wakeAnimStep++;
+    rt.wakeAnimNextMs = now + 120; // 120ms per frame
+    if (rt.wakeAnimStep > 4) {
+      rt.wakeAnimStep = 0; // Finished animation
+    }
+  }
+
   // Update Picaio mood mapping
+  bool isSpecialMode = rt.menuOpen || rt.faceMode == FACE_MENU || rt.faceMode == FACE_HEART || rt.faceMode == FACE_INFO || rt.faceMode == FACE_WIFI_SETUP || rt.faceMode == FACE_UPDATE || rt.faceMode == FACE_ALARM;
+
   if (settings.monitoringEnabled) {
     rt.picaioMood = 3; // Angry / Alert
     rt.faceMode = FACE_DAY; // Ensure eyes are visible
-  } else if (rt.ambientDark) {
+  } else if (rt.ambientDark && !isSpecialMode && now > rt.wakeOverrideUntil) {
     rt.picaioMood = 2; // Sleeping / Closed
     rt.faceMode = FACE_NIGHT;
-  } else if (isNightTime() && !rt.ambientDark) {
+  } else if (isNightTime() && !rt.ambientDark && !isSpecialMode && now > rt.wakeOverrideUntil) {
     rt.picaioMood = 4; // Sad / Tired
     rt.faceMode = FACE_EVENING;
   } else {
@@ -1559,6 +1681,7 @@ void updatePeriodicGreeting() {
 
 void updateLampAutoOff() {
   if (!settings.lampState || settings.ledAutoOffMinutes == 0) return;
+  if (rt.lampManuallyOn || rt.lampLdrOn || rt.ambientDark) return;
   static uint32_t lampOnSince = 0;
   if (settings.lampState && lampOnSince == 0) lampOnSince = millis();
   if (!settings.lampState) lampOnSince = 0;
@@ -1575,6 +1698,7 @@ void handleTouchReleaseTap(uint32_t heldMs) {
   }
 
   uint32_t now = millis();
+  rt.wakeOverrideUntil = now + 20000;
   if (rt.faceMode == FACE_WIFI_SETUP) {
     closeWiFiSetup();
     return;
@@ -1615,6 +1739,17 @@ void handleTouchInput() {
     rt.touch.pressed = true;
     rt.touch.pressedAt = now;
     rt.touch.longHandled = false;
+    
+    if (rt.faceMode == FACE_NIGHT || rt.faceMode == FACE_EVENING) {
+      rt.wakeAnimStep = 1;
+      rt.wakeAnimNextMs = now + 120;
+      rt.wakeOverrideUntil = now + 20000;
+      rt.faceMode = FACE_DAY;
+      Serial.println("Wake animation started from sleep");
+    } else {
+      rt.wakeOverrideUntil = now + 20000;
+    }
+
     if (settings.monitoringEnabled) {
       triggerSecurityAlarm("touch-detected");
     } else {
@@ -1695,7 +1830,11 @@ void openSetupPortal(bool initial, uint32_t durationMs) {
   WiFi.softAP("GEM Buddy", GEM_HOTSPOT_PASSWORD);
   rt.menuUntil = millis() + durationMs;
   rt.hotspotActiveState = true;
-  rt.hotspotStateTimer = millis() + 600000UL;
+  if (settings.hotspotTimeoutMinutes == 0) {
+    rt.hotspotStateTimer = millis() + 7200000UL; // 2 hours / Always active
+  } else {
+    rt.hotspotStateTimer = millis() + (uint32_t)settings.hotspotTimeoutMinutes * 60000UL;
+  }
 }
 
 void startHotspotPortal(bool allowStation, bool initialSetup) {
@@ -1739,6 +1878,7 @@ String buildStateJson() {
   json += "\"wifiConnected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false") + ",";
   json += "\"setupComplete\":" + String(settings.setupComplete ? "true" : "false") + ",";
   json += "\"hotspotEnabled\":" + String(settings.hotspotEnabled ? "true" : "false") + ",";
+  json += "\"hotspotTimeoutMinutes\":" + String(settings.hotspotTimeoutMinutes) + ",";
   json += "\"hotspotActive\":" + String((WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA) ? "true" : "false") + ",";
   json += "\"batteryPercent\":" + String(rt.batteryPercent) + ",";
   json += "\"batteryVoltage\":" + String(rt.batteryVoltage, 2) + ",";
@@ -1749,6 +1889,7 @@ String buildStateJson() {
   json += "\"faceMode\":" + String((int)rt.faceMode) + ",";
   json += "\"timeValid\":" + String(validClock() ? "true" : "false") + ",";
   json += "\"bpm\":" + String(rt.bpm) + ",";
+  json += "\"pulseRaw\":" + String(rt.heartModeActive ? analogRead(PIN_PULSE_ADC) : 0) + ",";
   json += "\"ip\":\"" + WiFi.localIP().toString() + "\"";
   json += ",\"alarms\":[";
   for (uint8_t i = 0; i < settings.alarmCount && i < 6; ++i) {
@@ -1893,6 +2034,11 @@ void handleRoot() {
 }
 
 void handleUpdateUI() {
+  if (!server.hasArg("pass") || server.arg("pass") != GEM_UPDATE_PASSWORD) {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(401, "text/html", "<html><body><h2>Unauthorized</h2><p>Provide valid pass query parameter.</p></body></html>");
+    return;
+  }
   String html;
   html.reserve(4000);
   String repoUrl = server.hasArg("url") ? server.arg("url") : "";
@@ -1963,10 +2109,17 @@ void applySettingsFromRequest() {
   }
   
   if (server.hasArg("webhook")) copyText(settings.cloudWebhook, sizeof(settings.cloudWebhook), server.arg("webhook").c_str());
+  if (server.hasArg("hotspotTimeoutMinutes")) {
+    settings.hotspotTimeoutMinutes = (uint8_t)server.arg("hotspotTimeoutMinutes").toInt();
+  }
 
-  if (settings.monitoringEnabled && (!oldMonitoring || !settings.wifiEnabled)) {
+  bool wifiChanged = server.hasArg("wifiSsid") || server.hasArg("wifiPass");
+  if (settings.monitoringEnabled && (!oldMonitoring || !settings.wifiEnabled || wifiChanged)) {
     settings.wifiEnabled = true;
-    scheduleNetworking();
+    setupNetworking();
+    sendGuardToggleEvent(true); // Notify broker → app: guard is now ON
+  } else if (!settings.monitoringEnabled && oldMonitoring) {
+    sendGuardToggleEvent(false); // Notify broker → app: guard is now OFF
   }
 
   for (uint8_t i = 0; i < 6; ++i) {
@@ -2009,6 +2162,10 @@ void applySettingsFromRequest() {
   if (server.hasArg("lampBrightness")) settings.lampBrightness = (uint8_t)server.arg("lampBrightness").toInt();
   if (server.hasArg("lampState")) {
     settings.lampState = argTrue(server.arg("lampState"));
+    rt.lampManuallyOn = settings.lampState;
+    if (settings.lampState) {
+      rt.lampLdrOn = false;
+    }
     if (!settings.lampState && rt.alarmActive) {
       rt.alarmActive = false;
       rt.alarmIndex = 255;
@@ -2025,13 +2182,55 @@ void applySettingsFromRequest() {
 
 void handleSave() {
   rt.lastAppRequestAt = millis();
+
+  // If wifiSsid is provided, validate the credentials by testing connection
+  if (server.hasArg("wifiSsid")) {
+    String testSsid = server.arg("wifiSsid");
+    String testPass = server.hasArg("wifiPass") ? server.arg("wifiPass") : "";
+    if (testSsid.length() > 0) {
+      Serial.printf("Testing Wi-Fi connection to SSID: %s...\n", testSsid.c_str());
+      WiFi.begin(testSsid.c_str(), testPass.c_str());
+      uint32_t start = millis();
+      bool connected = false;
+      while (millis() - start < 8000) {
+        if (WiFi.status() == WL_CONNECTED) {
+          connected = true;
+          break;
+        }
+        delay(150);
+      }
+      if (!connected) {
+        Serial.println("Test Wi-Fi Connection Failed!");
+        WiFi.disconnect(true);
+        server.sendHeader("Access-Control-Allow-Origin", "*");
+        server.send(400, "text/plain", "WiFi connection failed. Please check credentials.");
+        return;
+      }
+      Serial.println("Test Wi-Fi Connection Successful!");
+      WiFi.disconnect(true); // disconnect test, will reconnect when needed
+    }
+  }
+
+  bool oldMon = settings.monitoringEnabled;
   applySettingsFromRequest();
+
+  if (settings.monitoringEnabled && !oldMon) {
+    if (WiFi.status() != WL_CONNECTED) {
+      settings.monitoringEnabled = false;
+      settings.wifiEnabled = false;
+      saveSettings();
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      server.send(400, "text/plain", "WiFi connection failed. Cannot enable Guard Mode.");
+      return;
+    }
+  }
+
   if (server.hasArg("epoch")) {
     setTimeFromArgs();
   }
 
   bool needsReboot = false;
-  if (server.hasArg("wifiSsid") || server.hasArg("wifiPass") || server.hasArg("reboot")) {
+  if (server.hasArg("reboot")) {
     needsReboot = true;
   }
 
@@ -2092,7 +2291,51 @@ void handleHeartApi() {
       return;
     }
   }
-  server.send(200, "application/json", "{\"ok\":true,\"scanning\":" + String(rt.heartModeActive ? "true" : "false") + ",\"bpm\":" + String(rt.bpm) + "}");
+  server.send(200, "application/json", "{\"ok\":true,\"scanning\":" + String(rt.heartModeActive ? "true" : "false") + ",\"bpm\":" + String(rt.bpm) + ",\"pulseRaw\":" + String(rt.heartModeActive ? analogRead(PIN_PULSE_ADC) : 0) + "}");
+}
+
+void handleWifiScan() {
+  rt.lastAppRequestAt = millis();
+  Serial.println("API: Scanning WiFi networks...");
+  int n = WiFi.scanNetworks(false, false, false, 300);
+  String json = "[";
+  if (n > 0) {
+    for (int i = 0; i < n; ++i) {
+      if (i > 0) json += ",";
+      json += "{";
+      json += "\"ssid\":\"" + WiFi.SSID(i) + "\",";
+      json += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
+      json += "\"encryption\":" + String(WiFi.encryptionType(i));
+      json += "}";
+    }
+  }
+  json += "]";
+  WiFi.scanDelete();
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", json);
+}
+
+
+
+
+void drawFlashingProgress(size_t bytes) {
+  u8g2.clearBuffer();
+  u8g2.drawRFrame(2, 2, 124, 60, 8);
+  drawCentered(18, "Flashing...", u8g2_font_6x10_tf);
+  
+  // Dynamic animated progress bar or icons
+  int animFrame = (millis() / 150) % 8;
+  
+  // Draw an arrow pointing down moving down
+  u8g2.drawTriangle(64, 42 + (animFrame % 4), 60, 36 + (animFrame % 4), 68, 36 + (animFrame % 4));
+  u8g2.drawBox(62, 28 + (animFrame % 4), 5, 8);
+  
+  // Show loaded bytes count (in KB)
+  char bytesBuf[32];
+  snprintf(bytesBuf, sizeof(bytesBuf), "%d KB loaded", (int)(bytes / 1024));
+  drawCentered(54, bytesBuf, u8g2_font_5x7_tr);
+  
+  u8g2.sendBuffer();
 }
 
 void handleNotFound() {
@@ -2193,10 +2436,16 @@ void setupServer() {
   server.on("/api/time", HTTP_ANY, handleTimeSet);
   server.on("/api/factory-reset", HTTP_GET, handleFactoryReset);
   server.on("/api/heart", HTTP_ANY, handleHeartApi);
+  server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
   server.on("/update", HTTP_GET, handleUpdateUI);
   
   // OTA firmware update endpoint
   server.on("/api/update", HTTP_POST, []() {
+    if (!server.hasArg("pass") || server.arg("pass") != GEM_UPDATE_PASSWORD) {
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      server.send(401, "text/plain", "UNAUTHORIZED");
+      return;
+    }
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Connection", "close");
     server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
@@ -2204,20 +2453,46 @@ void setupServer() {
     ESP.restart();
   }, []() {
     HTTPUpload& upload = server.upload();
+    if (!server.hasArg("pass") || server.arg("pass") != GEM_UPDATE_PASSWORD) {
+      return;
+    }
     if (upload.status == UPLOAD_FILE_START) {
       Serial.printf("Update: %s\n", upload.filename.c_str());
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { // start with max available size
+      u8g2.clearBuffer();
+      u8g2.drawRFrame(2, 2, 124, 60, 8);
+      drawCentered(30, "Preparing Flash...", u8g2_font_6x10_tf);
+      u8g2.sendBuffer();
+      size_t updateSize = UPDATE_SIZE_UNKNOWN;
+      if (server.hasArg("size")) {
+        updateSize = server.arg("size").toInt();
+      }
+      if (!Update.begin(updateSize)) { 
         Update.printError(Serial);
       }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
       if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
         Update.printError(Serial);
       }
+      static uint32_t lastDrawTime = 0;
+      if (millis() - lastDrawTime > 250) {
+        drawFlashingProgress(upload.totalSize);
+        lastDrawTime = millis();
+      }
     } else if (upload.status == UPLOAD_FILE_END) {
       if (Update.end(true)) { // true to set the size to the current progress
         Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+        u8g2.clearBuffer();
+        u8g2.drawRFrame(2, 2, 124, 60, 8);
+        drawCentered(24, "Update Success!", u8g2_font_6x10_tf);
+        drawCentered(42, "Rebooting GEM...", u8g2_font_5x7_tr);
+        u8g2.sendBuffer();
       } else {
         Update.printError(Serial);
+        u8g2.clearBuffer();
+        u8g2.drawRFrame(2, 2, 124, 60, 8);
+        drawCentered(24, "Update Failed!", u8g2_font_6x10_tf);
+        drawCentered(42, "Error occurred", u8g2_font_5x7_tr);
+        u8g2.sendBuffer();
       }
     }
   });
@@ -2301,9 +2576,13 @@ void setup() {
     rt.faceMode = FACE_WELCOME;
   }
   
-  // Initialize hotspot timer cycle on boot (start with 10-minute ON phase)
+  // Initialize hotspot timer cycle on boot (start with settings.hotspotTimeoutMinutes ON phase)
   rt.hotspotActiveState = true;
-  rt.hotspotStateTimer = millis() + 600000UL;
+  if (settings.hotspotTimeoutMinutes == 0) {
+    rt.hotspotStateTimer = millis() + 7200000UL; // 2 hours / Always active
+  } else {
+    rt.hotspotStateTimer = millis() + (uint32_t)settings.hotspotTimeoutMinutes * 60000UL;
+  }
 
   Serial.println("[4/7] Refreshing Sensors...");
   refreshSensors(true);
@@ -2327,38 +2606,26 @@ void setup() {
   Serial.println("=================================\n");
 }
 void updateHotspotTimeout() {
+  if (rt.faceMode == FACE_UPDATE) return; // Keep hotspot alive during updates!
   if (WiFi.status() == WL_CONNECTED) return; // Device cannot host when connected to WiFi!
-  if (settings.hotspotEnabled) return;
+  if (settings.hotspotEnabled || settings.hotspotTimeoutMinutes == 0) return; // Always On
   if (!settings.setupComplete) return;
 
-  const bool canConnectStation = settings.wifiEnabled && settings.wifiSsid[0] != '\0';
   uint32_t now = millis();
 
   if (rt.hotspotActiveState) {
-    // Hotspot is in the ON phase of the cycle
     int stationNum = WiFi.softAPgetStationNum();
     if (stationNum > 0) {
-      // Client connected, keep ON timer extended
-      rt.hotspotStateTimer = now + 600000UL;
+      // Client connected, keep timer extended
+      rt.hotspotStateTimer = now + (uint32_t)settings.hotspotTimeoutMinutes * 60000UL;
     } else if (now > rt.hotspotStateTimer) {
-      Serial.println("Hotspot cycle: Transitioning to OFF phase (20 mins)...");
+      Serial.println("Hotspot timeout reached: Turning off hotspot...");
       rt.hotspotActiveState = false;
-      rt.hotspotStateTimer = now + 1200000UL;
-      
       if (WiFi.status() == WL_CONNECTED) {
         WiFi.mode(WIFI_STA);
       } else {
         WiFi.mode(WIFI_OFF);
       }
-    }
-  } else {
-    // Hotspot is in the OFF phase of the cycle
-    if (now > rt.hotspotStateTimer) {
-      Serial.println("Hotspot cycle: Transitioning to ON phase (10 mins)...");
-      rt.hotspotActiveState = true;
-      rt.hotspotStateTimer = now + 600000UL;
-      
-      startHotspotPortal(canConnectStation, false);
     }
   }
 }

@@ -501,78 +501,348 @@ class _OledPainter extends CustomPainter {
 
     canvas.drawRect(Offset.zero & size, eyeBlack);
 
-    canvas.drawLine(
-      const Offset(4, 15),
-      Offset(size.width - 4, 15),
-      accent..strokeWidth = 0.45,
-    );
-
-    _drawText(canvas, userName.toUpperCase(), const Offset(8, 4), size: 7);
-    _drawText(canvas, deviceName.toUpperCase(), Offset(size.width - 48, 4), size: 7);
-
-    final double batX = size.width - 18;
-    const double batY = 4;
-    const double batW = 10;
-    const double batH = 6;
-    canvas.drawRect(Rect.fromLTWH(batX, batY, batW, batH), accent..strokeWidth = 0.5);
-    canvas.drawRect(Rect.fromLTWH(batX + batW, batY + 1.5, 1, 3), eyeWhite);
-
-    final double fillW = (batteryPercent / 100.0) * (batW - 2);
-    if (fillW > 0) {
-      canvas.drawRect(Rect.fromLTWH(batX + 1, batY + 1, fillW, batH - 2), eyeWhite);
-    }
-
-    final _EyeFrameSpec spec = _frames[frame] ?? _frames[_EyeFrameId.front]!;
-    final double centerY = 28.0;
-    final double leftX = size.width * 0.28;
-    final double rightX = size.width * 0.72;
-    final double eyeYJitter = _frameYOffsetForFaceMode();
-    final double eyeScale = _eyeScaleForFaceMode();
-    final double pairShift = _pairShiftForFaceMode();
-
-    if (spec.glasses) {
-      _drawGlasses(canvas, Offset(size.width / 2, centerY + eyeYJitter), eyeWhite, eyeBlack);
-    }
-
-    if (spec.useSleepArc) {
-      _drawSleepArc(canvas, Offset(leftX, centerY + eyeYJitter), eyeScale, eyeWhite, eyeBlack, left: true);
-      _drawSleepArc(canvas, Offset(rightX, centerY + eyeYJitter), eyeScale, eyeWhite, eyeBlack, left: false);
+    if (faceMode == 7) {
+      canvas.drawLine(
+        const Offset(4, 15),
+        Offset(size.width - 4, 15),
+        accent..strokeWidth = 0.45,
+      );
+      _drawText(canvas, 'HEART RATE SCAN', Offset(size.width / 2, 4), size: 7, center: true);
     } else {
-      _drawEye(canvas, Offset(leftX + pairShift, centerY + eyeYJitter), spec.left, eyeScale, eyeWhite, eyeBlack);
-      _drawEye(canvas, Offset(rightX + pairShift, centerY + eyeYJitter), spec.right, eyeScale, eyeWhite, eyeBlack);
+      canvas.drawLine(
+        const Offset(4, 15),
+        Offset(size.width - 4, 15),
+        accent..strokeWidth = 0.45,
+      );
+
+      _drawText(canvas, userName.toUpperCase(), const Offset(8, 4), size: 7);
+      _drawText(canvas, deviceName.toUpperCase(), Offset(size.width - 48, 4), size: 7);
+
+      final double batX = size.width - 18;
+      const double batY = 4;
+      const double batW = 10;
+      const double batH = 6;
+      canvas.drawRect(Rect.fromLTWH(batX, batY, batW, batH), accent..strokeWidth = 0.5);
+      canvas.drawRect(Rect.fromLTWH(batX + batW, batY + 1.5, 1, 3), eyeWhite);
+
+      final double fillW = (batteryPercent / 100.0) * (batW - 2);
+      if (fillW > 0) {
+        canvas.drawRect(Rect.fromLTWH(batX + 1, batY + 1, fillW, batH - 2), eyeWhite);
+      }
     }
 
-    if (spec.angryBrows || faceMode == 8) {
-      _drawBrows(canvas, Offset(leftX, centerY + eyeYJitter), Offset(rightX, centerY + eyeYJitter), eyeScale, eyeWhite);
+    if (faceMode != 7 && faceMode != 8) {
+      final _EyeFrameSpec spec = _frames[frame] ?? _frames[_EyeFrameId.front]!;
+      final double centerY = 28.0;
+      final double leftX = size.width * 0.28;
+      final double rightX = size.width * 0.72;
+      final double eyeYJitter = _frameYOffsetForFaceMode();
+      final double eyeScale = _eyeScaleForFaceMode();
+      final double pairShift = _pairShiftForFaceMode();
+
+      if (spec.glasses) {
+        _drawGlasses(canvas, Offset(size.width / 2, centerY + eyeYJitter), eyeWhite, eyeBlack);
+      }
+
+      if (spec.useSleepArc) {
+        _drawSleepArc(canvas, Offset(leftX, centerY + eyeYJitter), eyeScale, eyeWhite, eyeBlack, left: true);
+        _drawSleepArc(canvas, Offset(rightX, centerY + eyeYJitter), eyeScale, eyeWhite, eyeBlack, left: false);
+      } else {
+        _drawEye(
+          canvas,
+          Offset(leftX - pairShift * eyeScale, centerY + eyeYJitter),
+          spec.left,
+          eyeScale,
+          eyeWhite,
+          eyeBlack,
+        );
+        _drawEye(
+          canvas,
+          Offset(rightX + pairShift * eyeScale, centerY + eyeYJitter),
+          spec.right,
+          eyeScale,
+          eyeWhite,
+          eyeBlack,
+        );
+      }
+
+      if (spec.angryBrows || faceMode == 8) {
+        _drawBrows(canvas, Offset(leftX, centerY + eyeYJitter), Offset(rightX, centerY + eyeYJitter), eyeScale, eyeWhite);
+      }
+
+      if (spec.tear) {
+        _drawTears(canvas, Offset(leftX, centerY + eyeYJitter), eyeScale, eyeWhite);
+        _drawTears(canvas, Offset(rightX, centerY + eyeYJitter), eyeScale, eyeWhite, mirrored: true);
+      }
+
+      final double mouthY = 48.0;
+      final bool smile = faceMode != 8 && faceMode != 2;
+      final bool tiny = faceMode == 5 || faceMode == 2;
+      _drawMouth(canvas, size.width * 0.50, mouthY, smile, tiny, eyeWhite, accent);
     }
 
-    if (spec.tear) {
-      _drawTears(canvas, Offset(leftX + pairShift, centerY + eyeYJitter), eyeScale, eyeWhite);
-      _drawTears(canvas, Offset(rightX + pairShift, centerY + eyeYJitter), eyeScale, eyeWhite, mirrored: true);
-    }
+    final Paint bubbleBorderPaint = Paint()
+      ..color = GemColors.accentBlue
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
 
-    final double mouthY = 48.0;
-    final bool smile = faceMode != 8 && faceMode != 2;
-    final bool tiny = faceMode == 5 || faceMode == 2;
-    _drawMouth(canvas, size.width * 0.50, mouthY, smile, tiny, eyeWhite, accent);
+    final Paint bubbleFillPaint = Paint()
+      ..color = const Color(0xff020205)
+      ..style = PaintingStyle.fill;
+
+    final double bubbleX = size.width * 0.015;
+    final double bubbleY = size.height * 0.72;
+    final double bubbleW = size.width * 0.97;
+    final double bubbleH = size.height * 0.25;
 
     if (faceMode == 5) {
       _drawFloatingHearts(canvas, size, floatProgress);
-      _drawText(canvas, 'I like your company', Offset(size.width * 0.2, size.height * 0.85), size: 7);
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bubbleX, bubbleY, bubbleW, bubbleH),
+          const Radius.circular(3),
+        ),
+        bubbleFillPaint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bubbleX, bubbleY, bubbleW, bubbleH),
+          const Radius.circular(3),
+        ),
+        bubbleBorderPaint,
+      );
+
+      final Path tipPath = Path()
+        ..moveTo(size.width * 0.234, bubbleY)
+        ..lineTo(size.width * 0.266, size.height * 0.656)
+        ..lineTo(size.width * 0.297, bubbleY)
+        ..close();
+      canvas.drawPath(tipPath, bubbleFillPaint);
+
+      final Path tipBorderPath = Path()
+        ..moveTo(size.width * 0.234, bubbleY)
+        ..lineTo(size.width * 0.266, size.height * 0.656)
+        ..lineTo(size.width * 0.297, bubbleY);
+      canvas.drawPath(tipBorderPath, bubbleBorderPaint);
+
+      _drawText(
+        canvas,
+        'Hello ${userName.toUpperCase()}!',
+        Offset(size.width / 2, bubbleY + bubbleH * 0.22),
+        size: 7.5,
+        center: true,
+      );
     } else if (faceMode == 2) {
       _drawSleepingZzz(canvas, size, floatProgress);
-      _drawText(canvas, 'Night sleep mode', Offset(size.width * 0.22, size.height * 0.85), size: 7);
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bubbleX, bubbleY, bubbleW, bubbleH),
+          const Radius.circular(3),
+        ),
+        bubbleFillPaint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bubbleX, bubbleY, bubbleW, bubbleH),
+          const Radius.circular(3),
+        ),
+        bubbleBorderPaint,
+      );
+
+      final Path tipPath = Path()
+        ..moveTo(size.width * 0.234, bubbleY)
+        ..lineTo(size.width * 0.266, size.height * 0.656)
+        ..lineTo(size.width * 0.297, bubbleY)
+        ..close();
+      canvas.drawPath(tipPath, bubbleFillPaint);
+
+      final Path tipBorderPath = Path()
+        ..moveTo(size.width * 0.234, bubbleY)
+        ..lineTo(size.width * 0.266, size.height * 0.656)
+        ..lineTo(size.width * 0.297, bubbleY);
+      canvas.drawPath(tipBorderPath, bubbleBorderPaint);
+
+      _drawText(
+        canvas,
+        'Have a good sleep ${userName.toLowerCase()}...',
+        Offset(size.width / 2, bubbleY + bubbleH * 0.22),
+        size: 7.5,
+        center: true,
+      );
     } else if (faceMode == 7) {
-      _drawText(canvas, 'BPM', Offset(size.width * 0.76, size.height * 0.35), size: 8);
-      _drawText(canvas, '$bpm', Offset(size.width * 0.76, size.height * 0.55), size: 14, bold: true);
-      _drawPulseScanner(canvas, size, pulseProgress);
+      final double graphX = size.width * 0.05;
+      final double graphY = size.height * 0.30;
+      final double graphW = size.width * 0.90;
+      final double graphH = size.height * 0.50;
+
+      final Path graphPath = Path();
+      final Paint graphPaint = Paint()
+        ..color = GemColors.accentBlue
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2;
+
+      canvas.drawLine(
+        Offset(graphX, graphY + graphH),
+        Offset(graphX + graphW, graphY + graphH),
+        accent..strokeWidth = 0.35,
+      );
+
+      final int segments = 80;
+      final double step = graphW / segments;
+
+      for (int i = 0; i <= segments; i++) {
+        final double px = graphX + i * step;
+        final double phase = (i / segments) * 6.0 * math.pi - pulseProgress * 2.0 * math.pi;
+        double wave = math.sin(phase);
+        if (wave > 0.7) {
+          wave += 0.5 * math.sin(phase * 4);
+        }
+        final double py = graphY + graphH * 0.5 - (wave * graphH * 0.4);
+        if (i == 0) {
+          graphPath.moveTo(px, py);
+        } else {
+          graphPath.lineTo(px, py);
+        }
+      }
+      canvas.drawPath(graphPath, graphPaint);
+
+      _drawText(
+        canvas,
+        'SCANNING...',
+        Offset(size.width * 0.5, size.height * 0.92),
+        size: 7,
+        center: true,
+      );
     } else if (faceMode == 8) {
       _drawAlarmBells(canvas, size, pulseProgress);
-      _drawText(canvas, activeAlarmName, Offset(size.width * 0.2, size.height * 0.85), size: 7, center: true);
+
+      final double cardX = size.width * 0.031;
+      final double cardY = size.height * 0.063;
+      final double cardW = size.width * 0.938;
+      final double cardH = size.height * 0.875;
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(cardX, cardY, cardW, cardH),
+          const Radius.circular(8),
+        ),
+        bubbleFillPaint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(cardX, cardY, cardW, cardH),
+          const Radius.circular(8),
+        ),
+        bubbleBorderPaint,
+      );
+
+      canvas.drawLine(
+        Offset(cardX + 8, cardY + 16),
+        Offset(cardX + cardW - 8, cardY + 16),
+        accent..strokeWidth = 0.45,
+      );
+
+      _drawText(
+        canvas,
+        '🚨 REMINDER 🚨',
+        Offset(size.width / 2, cardY + 4),
+        size: 7.5,
+        bold: true,
+        center: true,
+      );
+
+      _drawText(
+        canvas,
+        activeAlarmName.toUpperCase(),
+        Offset(size.width / 2, cardY + 20),
+        size: 9.5,
+        bold: true,
+        center: true,
+      );
+
+      final now = DateTime.now();
+      final String timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      _drawText(
+        canvas,
+        'Time: $timeStr',
+        Offset(size.width / 2, cardY + 38),
+        size: 6.5,
+        center: true,
+      );
     } else if (faceMode == 1) {
-      _drawText(canvas, 'Evening relax mode', Offset(size.width * 0.22, size.height * 0.85), size: 7);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bubbleX, bubbleY, bubbleW, bubbleH),
+          const Radius.circular(3),
+        ),
+        bubbleFillPaint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bubbleX, bubbleY, bubbleW, bubbleH),
+          const Radius.circular(3),
+        ),
+        bubbleBorderPaint,
+      );
+
+      final Path tipPath = Path()
+        ..moveTo(size.width * 0.234, bubbleY)
+        ..lineTo(size.width * 0.266, size.height * 0.656)
+        ..lineTo(size.width * 0.297, bubbleY)
+        ..close();
+      canvas.drawPath(tipPath, bubbleFillPaint);
+
+      final Path tipBorderPath = Path()
+        ..moveTo(size.width * 0.234, bubbleY)
+        ..lineTo(size.width * 0.266, size.height * 0.656)
+        ..lineTo(size.width * 0.297, bubbleY);
+      canvas.drawPath(tipBorderPath, bubbleBorderPaint);
+
+      _drawText(
+        canvas,
+        'Ready to relax ☕',
+        Offset(size.width / 2, bubbleY + bubbleH * 0.22),
+        size: 7.5,
+        center: true,
+      );
     } else {
-      _drawText(canvas, 'Day mode', Offset(size.width * 0.36, size.height * 0.85), size: 7);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bubbleX, bubbleY, bubbleW, bubbleH),
+          const Radius.circular(3),
+        ),
+        bubbleFillPaint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bubbleX, bubbleY, bubbleW, bubbleH),
+          const Radius.circular(3),
+        ),
+        bubbleBorderPaint,
+      );
+
+      final Path tipPath = Path()
+        ..moveTo(size.width * 0.234, bubbleY)
+        ..lineTo(size.width * 0.266, size.height * 0.656)
+        ..lineTo(size.width * 0.297, bubbleY)
+        ..close();
+      canvas.drawPath(tipPath, bubbleFillPaint);
+
+      final Path tipBorderPath = Path()
+        ..moveTo(size.width * 0.234, bubbleY)
+        ..lineTo(size.width * 0.266, size.height * 0.656)
+        ..lineTo(size.width * 0.297, bubbleY);
+      canvas.drawPath(tipBorderPath, bubbleBorderPaint);
+
+      _drawText(
+        canvas,
+        'Good day ${userName.toLowerCase()}!',
+        Offset(size.width / 2, bubbleY + bubbleH * 0.22),
+        size: 7.5,
+        center: true,
+      );
     }
   }
 
@@ -848,17 +1118,7 @@ class _OledPainter extends CustomPainter {
     canvas.drawCircle(Offset(size.width - 18, size.height * 0.45), bellSize / 2, alertPaint);
   }
 
-  void _drawPulseScanner(Canvas canvas, Size size, double pulse) {
-    final Paint pulsePaint = Paint()
-      ..color = GemColors.accentBlue.withValues(alpha: 0.2)
-      ..style = PaintingStyle.fill;
 
-    canvas.drawCircle(
-      Offset(size.width * 0.85, size.height * 0.45),
-      12 + pulse * 14,
-      pulsePaint,
-    );
-  }
 
   void _drawText(
     Canvas canvas,

@@ -20,6 +20,7 @@ class DeviceState {
   final bool setupComplete;
   final bool hotspotEnabled;
   final bool hotspotActive;
+  final int hotspotTimeoutMinutes;
   final int batteryPercent;
   final double batteryVoltage;
   final int ldrRaw;
@@ -41,6 +42,7 @@ class DeviceState {
   final bool isSimulated;
   final bool isHeartScanning;
   final int bpm;
+  final int pulseRaw;
   final int activeAlarmIndex; // 255 if none
   final String? lastNotificationMessage;
 
@@ -59,6 +61,7 @@ class DeviceState {
     this.setupComplete = false,
     this.hotspotEnabled = false,
     this.hotspotActive = false,
+    this.hotspotTimeoutMinutes = 20,
     this.batteryPercent = 88,
     this.batteryVoltage = 3.95,
     this.ldrRaw = 2048,
@@ -78,6 +81,7 @@ class DeviceState {
     this.isSimulated = false, // Default to false so we connect to hardware
     this.isHeartScanning = false,
     this.bpm = 0,
+    this.pulseRaw = 0,
     this.activeAlarmIndex = 255,
     this.lastNotificationMessage,
     this.brokerIpAddress = 'design-and-development-of-gem-buddy-an.onrender.com',
@@ -95,6 +99,7 @@ class DeviceState {
     bool? setupComplete,
     bool? hotspotEnabled,
     bool? hotspotActive,
+    int? hotspotTimeoutMinutes,
     int? batteryPercent,
     double? batteryVoltage,
     int? ldrRaw,
@@ -114,6 +119,7 @@ class DeviceState {
     bool? isSimulated,
     bool? isHeartScanning,
     int? bpm,
+    int? pulseRaw,
     int? activeAlarmIndex,
     String? lastNotificationMessage,
     String? brokerIpAddress,
@@ -130,6 +136,7 @@ class DeviceState {
       setupComplete: setupComplete ?? this.setupComplete,
       hotspotEnabled: hotspotEnabled ?? this.hotspotEnabled,
       hotspotActive: hotspotActive ?? this.hotspotActive,
+      hotspotTimeoutMinutes: hotspotTimeoutMinutes ?? this.hotspotTimeoutMinutes,
       batteryPercent: batteryPercent ?? this.batteryPercent,
       batteryVoltage: batteryVoltage ?? this.batteryVoltage,
       ldrRaw: ldrRaw ?? this.ldrRaw,
@@ -149,6 +156,7 @@ class DeviceState {
       isSimulated: isSimulated ?? this.isSimulated,
       isHeartScanning: isHeartScanning ?? this.isHeartScanning,
       bpm: bpm ?? this.bpm,
+      pulseRaw: pulseRaw ?? this.pulseRaw,
       activeAlarmIndex: activeAlarmIndex ?? this.activeAlarmIndex,
       lastNotificationMessage: lastNotificationMessage,
       brokerIpAddress: brokerIpAddress ?? this.brokerIpAddress,
@@ -206,6 +214,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
   Timer? _pollingTimer;
   Timer? _simulatedSensorTimer;
   final String defaultSetupIp = '192.168.4.1';
+  http.Client? _uploadClient;
 
   @override
   DeviceState build() {
@@ -467,10 +476,10 @@ class DeviceNotifier extends Notifier<DeviceState> {
         ref.read(timelineProvider.notifier).addLog(
           type: 'heart',
           title: 'Pulse Scan Complete',
-          message: 'Measured $deviceBpm BPM.'
+          message: 'Completed pulse scan on GEM.'
         );
         state = state.copyWith(
-          lastNotificationMessage: '❤️ Heart Rate Scan Completed: $deviceBpm BPM',
+          lastNotificationMessage: '❤️ Heart Rate Scan Completed',
         );
       }
 
@@ -484,6 +493,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
         setupComplete: data['setupComplete'] ?? state.setupComplete,
         hotspotEnabled: data['hotspotEnabled'] ?? state.hotspotEnabled,
         hotspotActive: data['hotspotActive'] ?? state.hotspotActive,
+        hotspotTimeoutMinutes: data['hotspotTimeoutMinutes'] ?? state.hotspotTimeoutMinutes,
         batteryPercent: data['batteryPercent'] ?? state.batteryPercent,
         batteryVoltage: (data['batteryVoltage'] as num?)?.toDouble() ?? state.batteryVoltage,
         ldrRaw: data['ldrRaw'] ?? state.ldrRaw,
@@ -498,6 +508,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
         isConnecting: false,
         isHeartScanning: isScanningOnHardware,
         bpm: deviceBpm,
+        pulseRaw: data['pulseRaw'] ?? 0,
       );
 
       if (data['faceMode'] == 8 && state.activeAlarmIndex == 255) {
@@ -515,7 +526,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
       }
 
       if (isScanningOnHardware) {
-        Timer(const Duration(seconds: 1), () => fetchDeviceState());
+        Timer(const Duration(milliseconds: 150), () => fetchDeviceState());
       }
     } catch (e) {
       if (kDebugMode) {
@@ -560,7 +571,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     return false;
   }
 
-  Future<bool> saveSettings({
+  Future<String?> saveSettings({
     String? userName,
     String? deviceName,
     String? wifiSsid,
@@ -568,6 +579,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     bool? wifiEnabled,
     bool? monitoringEnabled,
     bool? hotspotEnabled,
+    int? hotspotTimeoutMinutes,
     int? lampMode,
     int? lampBrightness,
     bool? lampState,
@@ -584,6 +596,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     if (wifiEnabled != null) params['wifiEnabled'] = wifiEnabled ? 'true' : 'false';
     if (monitoringEnabled != null) params['monitoringEnabled'] = monitoringEnabled ? 'true' : 'false';
     if (hotspotEnabled != null) params['hotspotEnabled'] = hotspotEnabled ? 'true' : 'false';
+    if (hotspotTimeoutMinutes != null) params['hotspotTimeoutMinutes'] = hotspotTimeoutMinutes.toString();
     if (lampMode != null) params['lampMode'] = lampMode.toString();
     if (lampBrightness != null) params['lampBrightness'] = lampBrightness.toString();
     if (lampState != null) params['lampState'] = lampState ? 'true' : 'false';
@@ -595,6 +608,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     if (lampState != null) await prefs.setBool('saved_lampState', lampState);
     if (ledAutoOffMinutes != null) await prefs.setInt('saved_ledAutoOff', ledAutoOffMinutes);
     if (hotspotEnabled != null) await prefs.setBool('saved_hotspotEnabled', hotspotEnabled);
+    if (hotspotTimeoutMinutes != null) await prefs.setInt('saved_hotspotTimeoutMinutes', hotspotTimeoutMinutes);
     if (monitoringEnabled != null) await prefs.setBool('saved_monitoringEnabled', monitoringEnabled);
 
     final activeAlarms = alarms ?? state.alarms;
@@ -620,6 +634,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
         wifiEnabled: wifiEnabled ?? state.wifiEnabled,
         monitoringEnabled: monitoringEnabled ?? state.monitoringEnabled,
         hotspotEnabled: hotspotEnabled ?? state.hotspotEnabled,
+        hotspotTimeoutMinutes: hotspotTimeoutMinutes ?? state.hotspotTimeoutMinutes,
         lampMode: lampMode ?? state.lampMode,
         lampBrightness: lampBrightness ?? state.lampBrightness,
         lampState: lampState ?? state.lampState,
@@ -635,12 +650,12 @@ class DeviceNotifier extends Notifier<DeviceState> {
         title: 'Settings Saved (Simulated)', 
         message: 'Settings updated inside local simulator memory.'
       );
-      return true;
+      return null;
     }
 
     try {
       final uri = Uri.http(state.ipAddress, '/api/save', params);
-      final response = await http.get(uri).timeout(const Duration(seconds: 4));
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
       
       if (response.statusCode == 200) {
         state = state.copyWith(
@@ -649,6 +664,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
           wifiEnabled: wifiEnabled ?? state.wifiEnabled,
           monitoringEnabled: monitoringEnabled ?? state.monitoringEnabled,
           hotspotEnabled: hotspotEnabled ?? state.hotspotEnabled,
+          hotspotTimeoutMinutes: hotspotTimeoutMinutes ?? state.hotspotTimeoutMinutes,
           lampMode: lampMode ?? state.lampMode,
           lampBrightness: lampBrightness ?? state.lampBrightness,
           lampState: lampState ?? state.lampState,
@@ -663,12 +679,14 @@ class DeviceNotifier extends Notifier<DeviceState> {
           title: 'Settings Sync Completed', 
           message: 'Hardware flash updated via REST.'
         );
-        return true;
+        return null;
+      } else {
+        return response.body;
       }
     } catch (e) {
       if (kDebugMode) print("Save failed: $e");
+      return e.toString();
     }
-    return false;
   }
 
   Future<bool> findMyGem() async {
@@ -685,10 +703,11 @@ class DeviceNotifier extends Notifier<DeviceState> {
       return true;
     }
 
-    return saveSettings(
+    final err = await saveSettings(
       lampState: true,
       lampMode: 3, 
     );
+    return err == null;
   }
 
   Future<void> startHeartScan() async {
@@ -708,33 +727,39 @@ class DeviceNotifier extends Notifier<DeviceState> {
       );
 
       int tick = 0;
-      Timer.periodic(const Duration(milliseconds: 300), (timer) {
+      Timer.periodic(const Duration(milliseconds: 150), (timer) {
         if (!state.isHeartScanning) {
           timer.cancel();
           return;
         }
 
         tick++;
-        if (tick < 10) {
-          final nextBpm = 60 + math.Random().nextInt(30);
-          state = state.copyWith(bpm: nextBpm);
+        if (tick < 130) {
+          final double t = (tick % 6) / 6.0;
+          double val = 0.0;
+          if (t < 0.3) {
+            val = math.sin(t * (math.pi / 0.3));
+          } else if (t < 0.6) {
+            val = 0.2 * math.sin((t - 0.3) * (math.pi / 0.3));
+          }
+          final int simulatedAdc = 1900 + (val * 900).toInt() + math.Random().nextInt(50);
+          state = state.copyWith(pulseRaw: simulatedAdc);
         } else {
           timer.cancel();
-          final finalBpm = 72 + math.Random().nextInt(18); 
           state = state.copyWith(
             isHeartScanning: false,
-            faceMode: 0, 
-            bpm: finalBpm
+            faceMode: 0,
+            pulseRaw: 0,
           );
           
           ref.read(timelineProvider.notifier).addLog(
             type: 'heart',
             title: 'Pulse Scan Complete',
-            message: 'Measured $finalBpm BPM.'
+            message: 'Completed pulse scan on GEM.'
           );
 
           state = state.copyWith(
-            lastNotificationMessage: '❤️ Heart Rate Scan Completed: $finalBpm BPM',
+            lastNotificationMessage: '❤️ Heart Rate Scan Completed',
           );
         }
       });
@@ -770,6 +795,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
       state = state.copyWith(
         isHeartScanning: false,
         faceMode: 0,
+        pulseRaw: 0,
       );
       ref.read(timelineProvider.notifier).addLog(
         type: 'system',
@@ -780,6 +806,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
       state = state.copyWith(
         isHeartScanning: false,
         faceMode: 0,
+        pulseRaw: 0,
       );
 
       ref.read(timelineProvider.notifier).addLog(
@@ -799,6 +826,24 @@ class DeviceNotifier extends Notifier<DeviceState> {
       }
     }
   }
+
+  Future<List<Map<String, dynamic>>> scanWifiNetworks() async {
+    if (state.ipAddress.isEmpty) return [];
+    try {
+      final response = await http.get(Uri.parse('http://${state.ipAddress}/api/wifi/scan'))
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final List<dynamic> decoded = json.decode(response.body);
+        return decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) print("Failed to scan WiFi: $e");
+    }
+    return [];
+  }
+
+
+
 
   void dismissAlarm() {
     if (state.activeAlarmIndex == 255) return;
@@ -895,8 +940,11 @@ class DeviceNotifier extends Notifier<DeviceState> {
     }
   }
 
-  Future<bool> toggleBrokerGuardMode(bool active) async {
-    final physicalSuccess = await saveSettings(monitoringEnabled: active);
+  Future<String?> toggleBrokerGuardMode(bool active) async {
+    final physicalError = await saveSettings(monitoringEnabled: active);
+    if (physicalError != null) {
+      return physicalError;
+    }
     
     if (state.brokerIpAddress.isNotEmpty) {
       try {
@@ -911,15 +959,18 @@ class DeviceNotifier extends Notifier<DeviceState> {
           final brokerActive = data['active'] ?? active;
           state = state.copyWith(monitoringEnabled: brokerActive);
           await fetchSecurityLogs();
-          return true;
+          return null;
+        } else {
+          return response.body;
         }
       } catch (e) {
         if (kDebugMode) print("Failed to toggle broker guard mode: $e");
+        return e.toString();
       }
     }
     
     state = state.copyWith(monitoringEnabled: active);
-    return physicalSuccess;
+    return null;
   }
 
   Future<bool> clearSecurityLogs() async {
@@ -991,17 +1042,16 @@ class DeviceNotifier extends Notifier<DeviceState> {
             if (data['event'] == 'alert') {
               final reason = data['reason'] ?? 'Security alert';
               final device = data['device'] ?? 'GEM';
-              final battery = data['battery'] ?? 100;
 
               state = state.copyWith(
-                lastNotificationMessage: '🚨 SECURE ALERT: $reason detected on $device! (Bat: $battery%)',
+                lastNotificationMessage: '🚨 GUARD ALERT: $reason detected on $device!',
                 deviceOnline: data['deviceOnline'] ?? state.deviceOnline,
               );
 
               ref.read(timelineProvider.notifier).addLog(
                 type: 'alarm',
-                title: 'Security Alert: $reason',
-                message: '$device physical alert received from webhook broker.',
+                title: 'Guard Alert: $reason',
+                message: '$device triggered a security alert. Check incident log.',
               );
 
               fetchSecurityLogs();
@@ -1078,9 +1128,9 @@ class DeviceNotifier extends Notifier<DeviceState> {
     });
   }
 
-  Future<bool> uploadFirmware(List<int> bytes, String filename, {Function(double)? onProgress}) async {
+  Future<bool> uploadFirmware(List<int> bytes, String filename, {String? password, Function(double)? onProgress}) async {
     if (state.isSimulated) {
-      // Simulate progress
+      _uploadClient = null;
       for (int i = 1; i <= 10; i++) {
         await Future.delayed(const Duration(milliseconds: 150));
         if (onProgress != null) onProgress(i / 10.0);
@@ -1094,8 +1144,20 @@ class DeviceNotifier extends Notifier<DeviceState> {
     }
 
     try {
-      final uri = Uri.parse('http://${state.ipAddress}/api/update');
-      final request = http.MultipartRequest('POST', uri);
+      _uploadClient = http.Client();
+      final passQuery = password != null ? '?pass=${Uri.encodeComponent(password)}' : '';
+      final sizeQuery = password != null ? '&size=${bytes.length}' : '?size=${bytes.length}';
+      final uri = Uri.parse('http://${state.ipAddress}/api/update$passQuery$sizeQuery');
+      
+      final request = ProgressMultipartRequest(
+        'POST',
+        uri,
+        onProgress: (sent, total) {
+          if (onProgress != null && total > 0) {
+            onProgress(sent / total);
+          }
+        },
+      );
       
       final multipartFile = http.MultipartFile.fromBytes(
         'update', 
@@ -1104,9 +1166,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
       );
       request.files.add(multipartFile);
       
-      if (onProgress != null) onProgress(0.3);
-      final response = await request.send().timeout(const Duration(minutes: 2));
-      if (onProgress != null) onProgress(1.0);
+      final response = await _uploadClient!.send(request).timeout(const Duration(minutes: 2));
 
       if (response.statusCode == 200) {
         ref.read(timelineProvider.notifier).addLog(
@@ -1118,8 +1178,45 @@ class DeviceNotifier extends Notifier<DeviceState> {
       }
     } catch (e) {
       if (kDebugMode) print("OTA Upload failed: $e");
+    } finally {
+      _uploadClient?.close();
+      _uploadClient = null;
     }
     return false;
+  }
+
+  void cancelUpload() {
+    _uploadClient?.close();
+    _uploadClient = null;
+  }
+}
+
+class ProgressMultipartRequest extends http.MultipartRequest {
+  final Function(int bytesSent, int totalBytes)? onProgress;
+
+  ProgressMultipartRequest(
+    super.method,
+    super.url, {
+    this.onProgress,
+  });
+
+  @override
+  http.ByteStream finalize() {
+    final byteStream = super.finalize();
+    if (onProgress == null) return byteStream;
+
+    final total = contentLength;
+    int bytesSent = 0;
+
+    final transformer = StreamTransformer<List<int>, List<int>>.fromHandlers(
+      handleData: (data, sink) {
+        bytesSent += data.length;
+        onProgress!(bytesSent, total);
+        sink.add(data);
+      },
+    );
+
+    return http.ByteStream(byteStream.transform(transformer));
   }
 }
 

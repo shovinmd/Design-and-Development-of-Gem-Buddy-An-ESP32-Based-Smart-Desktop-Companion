@@ -66,7 +66,7 @@ class TimelineNotifier extends Notifier<List<TimelineLog>> {
           timestamp: DateTime.now().subtract(const Duration(hours: 1)),
           type: 'heart',
           title: 'Pulse Rate Recorded',
-          message: 'Measured resting rate of 78 BPM.',
+          message: 'Pulse scan completed successfully.',
         ),
         TimelineLog(
           timestamp: DateTime.now().subtract(const Duration(hours: 4)),

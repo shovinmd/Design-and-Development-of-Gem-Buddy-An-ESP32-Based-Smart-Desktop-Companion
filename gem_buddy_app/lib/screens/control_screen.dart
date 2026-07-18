@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:math' as math;
 import '../theme/colors.dart';
 import '../theme/glass_styles.dart';
 import '../widgets/glass_card.dart';
@@ -29,7 +30,7 @@ class ControlScreen extends ConsumerWidget {
                   children: [
                     Text('Control Panel', style: GlassStyles.titleStyle.copyWith(fontSize: 28, color: GemColors.textPrimary)),
                     const SizedBox(height: 4),
-                    const Text('Lamp presets, hardware alarms & health check', style: GlassStyles.subtitleStyle),
+                    const Text('Lamp presets and hardware alarms', style: GlassStyles.subtitleStyle),
                   ],
                 ),
               ),
@@ -101,74 +102,7 @@ class ControlScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 20),
 
-              // 2. HEART MODE CARD
-              FadeSlideTransition(
-                delay: const Duration(milliseconds: 300),
-                child: HeartbeatGlow(
-                  isScanning: deviceState.isHeartScanning,
-                  child: GlassCard(
-                    borderColor: deviceState.isHeartScanning ? GemColors.statusAlert.withValues(alpha: 0.5) : null,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            HeartbeatIcon(
-                              isScanning: deviceState.isHeartScanning,
-                              icon: Icons.favorite_outline_rounded,
-                              color: GemColors.statusAlert,
-                              size: 24,
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Pulse Sensor Mode',
-                              style: TextStyle(color: GemColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Trigger a live heart scan on GEM. The companion will power up the sensor, count BPM and save readings directly to storage.',
-                          style: TextStyle(color: GemColors.textSecondary, fontSize: 13, height: 1.3),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: deviceState.isHeartScanning 
-                                  ? GemColors.statusActive.withValues(alpha: 0.2) 
-                                  : GemColors.statusAlert.withValues(alpha: 0.8),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              side: BorderSide(
-                                color: deviceState.isHeartScanning ? GemColors.statusActive : Colors.transparent,
-                                width: 1,
-                              ),
-                            ),
-                            icon: HeartbeatIcon(
-                              isScanning: deviceState.isHeartScanning,
-                              icon: Icons.favorite_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                            label: Text(
-                              deviceState.isHeartScanning ? 'Stop Heart Scan (${deviceState.bpm} BPM)' : 'Start Heart Scan',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                            ),
-                            onPressed: deviceState.isHeartScanning 
-                                ? () => deviceNotifier.stopHeartScan()
-                                : () => deviceNotifier.startHeartScan(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
               const SizedBox(height: 20),
-
               // 3. REMINDER MANAGER CARD
               FadeSlideTransition(
                 delay: const Duration(milliseconds: 450),
@@ -536,152 +470,4 @@ class _PresetMode {
   final IconData icon;
 
   _PresetMode({required this.id, required this.label, required this.icon});
-}
-
-class HeartbeatIcon extends StatefulWidget {
-  final bool isScanning;
-  final IconData icon;
-  final Color color;
-  final double size;
-
-  const HeartbeatIcon({
-    super.key,
-    required this.isScanning,
-    required this.icon,
-    required this.color,
-    this.size = 24.0,
-  });
-
-  @override
-  State<HeartbeatIcon> createState() => _HeartbeatIconState();
-}
-
-class _HeartbeatIconState extends State<HeartbeatIcon> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-
-    _scaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 1.25), weight: 30),
-      TweenSequenceItem(tween: Tween<double>(begin: 1.25, end: 1.1), weight: 20),
-      TweenSequenceItem(tween: Tween<double>(begin: 1.1, end: 1.35), weight: 30),
-      TweenSequenceItem(tween: Tween<double>(begin: 1.35, end: 1.0), weight: 20),
-    ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-
-    if (widget.isScanning) {
-      _controller.repeat();
-    }
-  }
-
-  @override
-  void didUpdateWidget(HeartbeatIcon oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isScanning && !_controller.isAnimating) {
-      _controller.repeat();
-    } else if (!widget.isScanning && _controller.isAnimating) {
-      _controller.stop();
-      _controller.reset();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: widget.isScanning ? _scaleAnimation : const AlwaysStoppedAnimation(1.0),
-      child: Icon(widget.icon, color: widget.color, size: widget.size),
-    );
-  }
-}
-
-class HeartbeatGlow extends StatefulWidget {
-  final bool isScanning;
-  final Widget child;
-
-  const HeartbeatGlow({
-    super.key,
-    required this.isScanning,
-    required this.child,
-  });
-
-  @override
-  State<HeartbeatGlow> createState() => _HeartbeatGlowState();
-}
-
-class _HeartbeatGlowState extends State<HeartbeatGlow> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _glowAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    );
-
-    _glowAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween<double>(begin: 4.0, end: 12.0), weight: 30),
-      TweenSequenceItem(tween: Tween<double>(begin: 12.0, end: 6.0), weight: 20),
-      TweenSequenceItem(tween: Tween<double>(begin: 6.0, end: 16.0), weight: 30),
-      TweenSequenceItem(tween: Tween<double>(begin: 16.0, end: 4.0), weight: 20),
-    ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-
-    if (widget.isScanning) {
-      _controller.repeat();
-    }
-  }
-
-  @override
-  void didUpdateWidget(HeartbeatGlow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isScanning && !_controller.isAnimating) {
-      _controller.repeat();
-    } else if (!widget.isScanning && _controller.isAnimating) {
-      _controller.stop();
-      _controller.reset();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!widget.isScanning) return widget.child;
-
-    return AnimatedBuilder(
-      animation: _glowAnimation,
-      builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: GemColors.statusAlert.withValues(alpha: 0.3),
-                blurRadius: _glowAnimation.value,
-                spreadRadius: _glowAnimation.value / 6,
-              ),
-            ],
-          ),
-          child: widget.child,
-        );
-      },
-    );
-  }
 }

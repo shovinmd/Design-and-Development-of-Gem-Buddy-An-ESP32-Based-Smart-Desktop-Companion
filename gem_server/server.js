@@ -95,22 +95,20 @@ function handlePing(req, res) {
   const body    = { ...req.query, ...req.body };
   const source  = (body.source || 'device').toLowerCase();
   const device  = body.device  || 'GEM';
-  const battery = parseInt(body.battery, 10) || 100;
-  const ldr     = parseInt(body.ldr,     10) || 2048;
+  const ldr     = parseInt(body.ldr, 10) || 0;
   const now     = Date.now();
 
   if (source === 'device' || source === 'app') {
     lastSeen[source] = now;
   }
 
-  console.log(`[Ping] ${source.toUpperCase()} | device=${device} bat=${battery}% ldr=${ldr} guardMode=${guardModeActive}`);
+  console.log(`[Ping] ${source.toUpperCase()} | device=${device} ldr=${ldr} guardMode=${guardModeActive}`);
 
-  // Build ack payload
+  // Build ack payload — no battery field
   const ack = {
     event:         'ping_ack',
     source,
     device,
-    battery,
     ldr,
     guardMode:     guardModeActive,
     deviceOnline:  isOnline('device'),
@@ -118,19 +116,7 @@ function handlePing(req, res) {
     timestamp:     new Date(now).toISOString(),
   };
 
-  // Log the ping if guard mode is on
-  if (guardModeActive) {
-    addLog({
-      timestamp:   ack.timestamp,
-      event:       `${source}-ping`,
-      device,
-      battery,
-      ldr,
-      guardActive: true,
-    });
-  }
-
-  // Broadcast ack to all WebSocket clients (app sees device is alive, and vice-versa)
+  // Broadcast ack to all WebSocket clients
   broadcast(ack);
 
   res.json({ ok: true, guardMode: guardModeActive, ack });
@@ -154,19 +140,19 @@ app.get('/api/guard/status', (req, res) => {
 app.post('/api/guard/toggle', (req, res) => {
   const { active } = req.body;
   guardModeActive = (typeof active === 'boolean') ? active : !guardModeActive;
-  console.log(`[Guard] Toggled → ${guardModeActive ? 'ACTIVE' : 'INACTIVE'}`);
+  const source = req.body.device || 'app';
+  console.log(`[Guard] Toggled by ${source} → ${guardModeActive ? 'ACTIVE' : 'INACTIVE'}`);
 
   const entry = {
     timestamp:   new Date().toISOString(),
     event:       guardModeActive ? 'guard-enabled' : 'guard-disabled',
-    device:      req.body.device || 'app',
-    battery:     100,
-    ldr:         0,
+    device:      source,
     guardActive: guardModeActive,
   };
   addLog(entry);
 
-  broadcast({ event: 'guard_toggle', active: guardModeActive });
+  // Push to all WebSocket clients (app + any monitor)
+  broadcast({ event: 'guard_toggle', active: guardModeActive, device: source });
   res.json({ success: true, active: guardModeActive });
 });
 
@@ -181,39 +167,37 @@ app.post('/api/guard/clear', (req, res) => {
 
 // ── REST: Webhook (ESP32 security events) ─────────────────────────────────────
 app.post('/webhook', (req, res) => {
-  const device  = req.body.device  || 'GEM';
-  const user    = req.body.user    || 'Friend';
-  const event   = req.body.reason  || req.body.event || 'general-alert';
-  const battery = req.body.battery || '100';
-  const ldr     = req.body.ldr     || '2048';
+  const device = req.body.device || 'GEM';
+  const user   = req.body.user   || 'Friend';
+  const event  = req.body.reason || req.body.event || 'general-alert';
+  const ldr    = parseInt(req.body.ldr, 10) || 0;
 
-  console.log(`[Webhook] device=${device} event=${event} ldr=${ldr} bat=${battery}%`);
+  console.log(`[Webhook] device=${device} event=${event} ldr=${ldr}`);
 
-  // Update device last-seen on any webhook too
+  // Update device last-seen
   lastSeen.device = Date.now();
 
-  const isSecurityAlert = ['shadow-detected','flash-detected','touch-down','long-touch','alarm'].includes(event);
+  const isSecurityAlert = ['shadow-detected','flash-detected','touch-down','long-touch','touch-detected'].includes(event);
   const logEntry = {
     timestamp:   new Date().toISOString(),
     event,
     device,
     user,
-    battery:     parseInt(battery, 10) || 100,
-    ldr:         parseInt(ldr,     10) || 2048,
+    ldr,
     guardActive: guardModeActive,
   };
 
   if (guardModeActive || isSecurityAlert) addLog(logEntry);
 
+  // Broadcast alert to all WebSocket clients (app)
   const payload = {
-    event:       'alert',
-    reason:      event,
+    event:        'alert',
+    reason:       event,
     device,
-    battery:     parseInt(battery, 10) || 100,
-    ldr:         parseInt(ldr,     10) || 2048,
-    guardActive: guardModeActive,
+    ldr,
+    guardActive:  guardModeActive,
     deviceOnline: true,
-    timestamp:   logEntry.timestamp,
+    timestamp:    logEntry.timestamp,
   };
 
   const count = broadcast(payload);

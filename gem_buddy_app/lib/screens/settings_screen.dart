@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../theme/colors.dart';
 import '../theme/glass_styles.dart';
 import '../widgets/glass_card.dart';
@@ -22,7 +20,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isUploading = false;
   double _uploadProgress = 0.0;
   String _uploadStatus = '';
-  bool _isSavingAndReflashing = false;
 
   late TextEditingController _nameController;
   late TextEditingController _nicknameController;
@@ -31,6 +28,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _passController;
   late TextEditingController _brokerController;
   late String _selectedTimezone;
+  int _hotspotTimeout = 20;
 
   final List<Map<String, dynamic>> _timezones = [
     {'label': 'Asia/Kolkata', 'offset': 330},
@@ -55,6 +53,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _selectedTimezone = _timezones.any((tz) => tz['label'] == deviceState.timezoneLabel)
         ? deviceState.timezoneLabel
         : 'Asia/Kolkata';
+    _hotspotTimeout = deviceState.hotspotTimeoutMinutes;
         
     _loadWifiSettings();
   }
@@ -65,9 +64,118 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       setState(() {
         _ssidController.text = prefs.getString('saved_wifi_ssid') ?? '';
         _passController.text = prefs.getString('saved_wifi_pass') ?? '';
+        _hotspotTimeout = prefs.getInt('saved_hotspotTimeoutMinutes') ?? ref.read(deviceProvider).hotspotTimeoutMinutes;
       });
     }
   }
+
+  void _scanWifiNetworks() async {
+    final deviceState = ref.read(deviceProvider);
+    if (deviceState.isSimulated) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(GemColors.accentBlue),
+        ),
+      ),
+    );
+    final networks = await ref.read(deviceProvider.notifier).scanWifiNetworks();
+    if (mounted) Navigator.of(context).pop(); // pop loading
+
+    if (networks.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No 2.4GHz WiFi networks found.'),
+            backgroundColor: GemColors.statusAlert,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (mounted) {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: GemColors.bgSecondary,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) {
+          return SafeArea(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Available WiFi Networks',
+                    style: TextStyle(
+                      color: GemColors.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Select a 2.4GHz network to connect your GEM Buddy',
+                    style: TextStyle(
+                      color: GemColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: networks.length,
+                      itemBuilder: (context, index) {
+                        final net = networks[index];
+                        final ssid = net['ssid'] ?? '';
+                        final rssi = net['rssi'] ?? -100;
+                        final enc = net['encryption'] ?? 0;
+                        final isSecure = enc != 0;
+
+                        return ListTile(
+                          leading: Icon(
+                            Icons.wifi_rounded,
+                            color: GemColors.accentBlue.withValues(alpha: rssi > -60 ? 1.0 : rssi > -75 ? 0.7 : 0.4),
+                          ),
+                          title: Text(
+                            ssid,
+                            style: const TextStyle(color: GemColors.textPrimary),
+                          ),
+                          subtitle: Text(
+                            'Signal: $rssi dBm',
+                            style: const TextStyle(color: GemColors.textSecondary, fontSize: 11),
+                          ),
+                          trailing: isSecure
+                              ? const Icon(Icons.lock_rounded, color: GemColors.textSecondary, size: 16)
+                              : null,
+                          onTap: () {
+                            setState(() {
+                              _ssidController.text = ssid;
+                            });
+                            Navigator.of(context).pop();
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+  }
+
+
+
 
   @override
   void dispose() {
@@ -83,10 +191,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final deviceState = ref.watch(deviceProvider);
-    final userSettings = ref.watch(settingsProvider);
     
     final deviceNotifier = ref.read(deviceProvider.notifier);
-    final settingsNotifier = ref.read(settingsProvider.notifier);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -216,7 +322,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         controller: _ssidController,
                         enabled: !deviceState.isSimulated,
                         style: const TextStyle(color: GemColors.textPrimary, fontSize: 13),
-                        decoration: _inputDecoration('WiFi SSID', Icons.wifi_rounded),
+                        decoration: _inputDecoration('WiFi SSID', Icons.wifi_rounded).copyWith(
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.search_rounded, color: GemColors.accentBlue),
+                            tooltip: 'Scan WiFi Networks',
+                            onPressed: deviceState.isSimulated ? null : _scanWifiNetworks,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 10),
                       TextField(
@@ -225,6 +337,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         obscureText: true,
                         style: const TextStyle(color: GemColors.textPrimary, fontSize: 13),
                         decoration: _inputDecoration('WiFi Password', Icons.password_rounded),
+                      ),
+
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<int>(
+                        value: _hotspotTimeout,
+                        dropdownColor: GemColors.bgSecondary,
+                        style: const TextStyle(
+                          color: GemColors.textPrimary,
+                          fontSize: 14,
+                        ),
+                        decoration: _inputDecoration('Hotspot Hosting Window', Icons.wifi_tethering_rounded),
+                        items: const [
+                          DropdownMenuItem<int>(value: 0, child: Text('Always On')),
+                          DropdownMenuItem<int>(value: 20, child: Text('20 min')),
+                          DropdownMenuItem<int>(value: 40, child: Text('40 min')),
+                          DropdownMenuItem<int>(value: 60, child: Text('1 hr')),
+                          DropdownMenuItem<int>(value: 120, child: Text('2 hr')),
+                        ],
+                        onChanged: deviceState.isSimulated ? null : (val) {
+                          if (val != null) {
+                            setState(() {
+                              _hotspotTimeout = val;
+                            });
+                          }
+                        },
                       ),
                       const SizedBox(height: 16),
                       SizedBox(
@@ -246,18 +383,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   if (_ssidController.text.trim().isNotEmpty) {
                                     await prefs.setString('saved_wifi_ssid', _ssidController.text.trim());
                                     await prefs.setString('saved_wifi_pass', _passController.text.trim());
+                                    await prefs.setInt('saved_hotspotTimeoutMinutes', _hotspotTimeout);
                                   }
                                   
-                                  final success = await deviceNotifier.saveSettings(
+                                  final error = await deviceNotifier.saveSettings(
                                     wifiSsid: _ssidController.text.trim(),
                                     wifiPass: _passController.text.trim(),
                                     wifiEnabled: true,
+                                    hotspotTimeoutMinutes: _hotspotTimeout,
                                   );
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text(success ? 'Provision command sent!' : 'Failed to reach ESP32 setup portal.'),
-                                        backgroundColor: success ? GemColors.statusActive : GemColors.statusAlert,
+                                        content: Text(error == null ? 'Provision command sent!' : 'Provisioning failed: $error'),
+                                        backgroundColor: error == null ? GemColors.statusActive : GemColors.statusAlert,
                                       ),
                                     );
                                   }
@@ -303,118 +442,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         'Allows real-time notifications via WebSocket broker when LDR sensor detects sudden dark/light shifts.',
                         style: TextStyle(color: GemColors.textSecondary, fontSize: 12, height: 1.3),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _brokerController,
-                              style: const TextStyle(color: GemColors.textPrimary, fontSize: 14),
-                              decoration: _inputDecoration('Broker IP/Host', Icons.dns_rounded),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.black.withValues(alpha: 0.03),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                side: BorderSide(
-                                  color: deviceState.isBrokerConnected ? GemColors.statusActive : GemColors.accentBlue,
-                                  width: 1,
-                                ),
-                              ),
-                            ),
-                            onPressed: () {
-                              final host = _brokerController.text.trim();
-                              if (host.isNotEmpty) {
-                                deviceNotifier.connectToBroker(host);
-                              }
-                            },
-                            child: Text(
-                              deviceState.isBrokerConnected ? 'Connected' : 'Connect',
-                              style: TextStyle(
-                                color: deviceState.isBrokerConnected ? GemColors.statusActive : GemColors.accentBlue,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 16),
 
-              // 5. SAVE ALL & REFLASH CARD
+              // 5. FIRMWARE & UPDATES (OTA)
               FadeSlideTransition(
                 delay: const Duration(milliseconds: 350),
-                child: GlassCard(
-                  borderColor: _isSavingAndReflashing ? const Color(0xFFFF6B35).withValues(alpha: 0.6) : null,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.backup_rounded, color: Color(0xFFFF6B35), size: 22),
-                          SizedBox(width: 10),
-                          Text('Save All & Reflash', style: TextStyle(color: GemColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'Backs up your profile, WiFi, alarms, and all settings to the device, then immediately flashes the latest firmware. Your data is safe after reboot.',
-                        style: TextStyle(color: GemColors.textSecondary, fontSize: 12, height: 1.4),
-                      ),
-                      const SizedBox(height: 14),
-                      if (_isSavingAndReflashing) ...[
-                        LinearProgressIndicator(
-                          value: _uploadProgress > 0 ? _uploadProgress : null,
-                          backgroundColor: Colors.black.withValues(alpha: 0.08),
-                          color: const Color(0xFFFF6B35),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(_uploadStatus, style: const TextStyle(color: GemColors.textSecondary, fontSize: 12)),
-                            if (_uploadProgress > 0)
-                              Text('${(_uploadProgress * 100).toStringAsFixed(0)}%', style: const TextStyle(color: GemColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      ] else
-                        SizedBox(
-                          width: double.infinity,
-                          height: 46,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFFF6B35),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              elevation: 0,
-                            ),
-                            onPressed: _saveAndReflash,
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.flash_on_rounded, size: 20),
-                                SizedBox(width: 8),
-                                Text('Save Settings & Reflash Firmware', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 6. FIRMWARE & UPDATES (OTA)
-              FadeSlideTransition(
-                delay: const Duration(milliseconds: 400),
                 child: GlassCard(
                   borderColor: _isUploading ? GemColors.accentBlue.withValues(alpha: 0.5) : null,
                   child: Column(
@@ -424,8 +460,48 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         children: [
                           Icon(Icons.system_update_alt_rounded, color: GemColors.accentBlue, size: 22),
                           SizedBox(width: 10),
-                          Text('Firmware & OTA Update', style: TextStyle(color: GemColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text('Update Device', style: TextStyle(color: GemColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Flash the bundled firmware update directly to your GEM device over-the-air in the background.',
+                        style: TextStyle(color: GemColors.textSecondary, fontSize: 12, height: 1.3),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Creator', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
+                                Text('Shovin', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Version', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
+                                Text('1.3', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Release Date', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
+                                Text('July 18, 2026', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 16),
                       if (_isUploading) ...[
@@ -442,12 +518,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             Text('${(_uploadProgress * 100).toStringAsFixed(0)}%', style: const TextStyle(color: GemColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
                           ],
                         ),
-                      ] else ...[
-                        const Text(
-                          'Automatically check for and flash the latest firmware updates to your GEM device over-the-air.',
-                          style: TextStyle(color: GemColors.textSecondary, fontSize: 12),
-                        ),
-                        const SizedBox(height: 16),
+                      ] else
                         SizedBox(
                           width: double.infinity,
                           height: 44,
@@ -457,18 +528,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            onPressed: _checkGithubUpdates,
+                            onPressed: _flashFirmwareBackground,
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.cloud_download_rounded, size: 20),
+                                Icon(Icons.system_update_alt_rounded, size: 20),
                                 SizedBox(width: 8),
-                                Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.bold)),
+                                Text('Update', style: TextStyle(fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ),
                         ),
-                      ],
                     ],
                   ),
                 ),
@@ -491,290 +561,254 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Future<void> _checkGithubUpdates() async {
-    const repo = 'shovinmd/Design-and-Development-of-Gem-Buddy-An-ESP32-Based-Smart-Desktop-Companion';
-
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-      _uploadStatus = 'Checking for updates...';
-    });
-
-    try {
-      final url = 'https://api.github.com/repos/$repo/releases/latest';
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final tagName = data['tag_name'] as String;
-        final assets = data['assets'] as List;
-
-        // Find binary asset
-        dynamic binaryAsset;
-        for (final asset in assets) {
-          if ((asset['name'] as String).endsWith('.bin')) {
-            binaryAsset = asset;
-            break;
-          }
-        }
-
-        if (binaryAsset == null) {
-          setState(() {
-            _isUploading = false;
-          });
-          if (mounted) {
-            showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                backgroundColor: GemColors.bgPrimary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: GemColors.glassBorder)),
-                title: const Text('No Asset Found', style: TextStyle(color: GemColors.textPrimary, fontWeight: FontWeight.bold)),
-                content: const Text('Could not find any compiled firmware (.bin) file in the latest release.', style: TextStyle(color: GemColors.textSecondary)),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('OK', style: TextStyle(color: GemColors.accentBlue)),
-                  ),
-                ],
-              ),
-            );
-          }
-          return;
-        }
-
-        final downloadUrl = binaryAsset['browser_download_url'] as String;
-        final assetName = binaryAsset['name'] as String;
-
-        setState(() {
-          _isUploading = false;
-        });
-
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (ctx) {
-              return AlertDialog(
-                backgroundColor: GemColors.bgPrimary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: GemColors.glassBorder)),
-                title: const Text('Update Available', style: TextStyle(color: GemColors.textPrimary, fontWeight: FontWeight.bold)),
-                content: Text(
-                  'A new firmware release is available!\n\nVersion: $tagName\nFilename: $assetName\n\nDo you want to download and install this update now?',
-                  style: const TextStyle(color: GemColors.textSecondary, height: 1.3),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: GemColors.textSecondary)),
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: GemColors.accentBlue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      _openUpdateWebview(downloadUrl);
-                    },
-                    child: const Text('Open Update Page', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              );
-            },
-          );
-        }
-      } else {
-        throw Exception('Failed to fetch release: Status code ${response.statusCode}');
-      }
-    } catch (e) {
-      setState(() {
-        _isUploading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error checking updates: $e'),
-            backgroundColor: GemColors.statusAlert,
-          ),
-        );
-      }
-    }
-  }
-  Future<void> _openUpdateWebview(String downloadUrl) async {
-    showDialog(
+  Future<void> _flashFirmwareBackground() async {
+    final confirm = await showDialog<bool>(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: GemColors.bgPrimary,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(color: GemColors.accentBlue),
-            const SizedBox(height: 16),
-            Text('Connecting to GEM Buddy...', style: TextStyle(color: GemColors.textPrimary)),
-            const SizedBox(height: 8),
-            Text('Preparing updater interface', style: TextStyle(color: GemColors.textSecondary, fontSize: 12)),
-          ],
+      builder: (dialogCtx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GlassCard(
+          borderColor: GemColors.accentBlue.withValues(alpha: 0.3),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Update Device?',
+                  style: TextStyle(
+                    color: GemColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Do you want to flash the update? The GEM device will reboot automatically once completed.',
+                  style: TextStyle(
+                    color: GemColors.textSecondary,
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogCtx).pop(false),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: GemColors.textSecondary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: GemColors.accentBlue,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(dialogCtx).pop(true),
+                      child: const Text('Update'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
 
-    // Wait 3 seconds to let ESP32 prepare
-    await Future.delayed(const Duration(seconds: 3));
+    if (confirm != true) return;
 
-    if (mounted) {
-      Navigator.of(context).pop(); // Close loading dialog
-    }
+    final deviceState = ref.read(deviceProvider);
+    final deviceNotifier = ref.read(deviceProvider.notifier);
 
-    final ipAddress = ref.read(deviceProvider).ipAddress;
-    final url = Uri.parse('http://$ipAddress/update?url=${Uri.encodeComponent(downloadUrl)}');
-    
-    try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.inAppWebView);
-      } else {
-        throw Exception('Could not launch $url');
-      }
-    } catch (e) {
+    if (!deviceState.isConnected && !deviceState.isSimulated) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening update page: $e'),
+          const SnackBar(
+            content: Text('Error: App is not connected to the GEM device. Please check your Wi-Fi connection.'),
             backgroundColor: GemColors.statusAlert,
           ),
         );
       }
-    }
-  }
-
-  /// Saves ALL current settings to the device first, then flashes latest GitHub firmware.
-  /// This guarantees settings survive the reflash and reboot.
-  Future<void> _saveAndReflash() async {
-    const repo = 'shovinmd/Design-and-Development-of-Gem-Buddy-An-ESP32-Based-Smart-Desktop-Companion';
-
-    setState(() {
-      _isSavingAndReflashing = true;
-      _uploadProgress = 0.0;
-      _uploadStatus = 'Step 1/3 — Saving all settings to device...';
-    });
-
-    // ── Step 1: Save everything ───────────────────────────────────────────
-    try {
-      final deviceNotifier = ref.read(deviceProvider.notifier);
-      final settingsNotifier = ref.read(settingsProvider.notifier);
-      final deviceState = ref.read(deviceProvider);
-      final tzMatch = _timezones.firstWhere(
-        (tz) => tz['label'] == _selectedTimezone,
-        orElse: () => {'label': 'Asia/Kolkata', 'offset': 330},
-      );
-
-      await settingsNotifier.updateUserName(_nameController.text.trim());
-      await settingsNotifier.updateDeviceNickname(_nicknameController.text.trim());
-
-      final prefs = await SharedPreferences.getInstance();
-      if (_ssidController.text.trim().isNotEmpty) {
-        await prefs.setString('saved_wifi_ssid', _ssidController.text.trim());
-        await prefs.setString('saved_wifi_pass', _passController.text.trim());
-      }
-
-      await deviceNotifier.saveSettings(
-        userName: _nameController.text.trim(),
-        deviceName: _nicknameController.text.trim(),
-        timezoneLabel: tzMatch['label'] as String,
-        timezoneOffsetMinutes: tzMatch['offset'] as int,
-        wifiSsid: _ssidController.text.trim().isNotEmpty ? _ssidController.text.trim() : null,
-        wifiPass: _passController.text.isNotEmpty ? _passController.text : null,
-        wifiEnabled: deviceState.wifiEnabled,
-        alarms: deviceState.alarms,
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Settings save failed: $e'), backgroundColor: GemColors.statusAlert),
-        );
-      }
-      setState(() { _isSavingAndReflashing = false; });
       return;
     }
 
-    // ── Step 2: Fetch latest release from GitHub ──────────────────────────
-    setState(() { _uploadStatus = 'Step 2/3 — Checking latest firmware release...'; });
     try {
-      final releaseResponse = await http.get(
-        Uri.parse('https://api.github.com/repos/$repo/releases/latest'),
-      ).timeout(const Duration(seconds: 10));
+      setState(() {
+        _isUploading = true;
+        _uploadProgress = 0.0;
+        _uploadStatus = 'Loading firmware asset...';
+      });
 
-      if (releaseResponse.statusCode != 200) {
-        throw Exception('GitHub returned ${releaseResponse.statusCode}');
+      final byteData = await rootBundle.load('assets/firmware.bin');
+      final fileBytes = byteData.buffer.asUint8List();
+
+      if (mounted) {
+        setState(() {
+          _uploadStatus = 'Uploading firmware...';
+        });
       }
 
-      final data = json.decode(releaseResponse.body);
-      final assets = data['assets'] as List;
-      dynamic binaryAsset;
-      for (final asset in assets) {
-        if ((asset['name'] as String).endsWith('.bin')) {
-          binaryAsset = asset;
-          break;
-        }
-      }
+      StateSetter? dialogStateSetter;
+      bool dialogOpen = true;
 
-      if (binaryAsset == null) {
-        throw Exception('No .bin firmware file found in the latest release.');
-      }
+      if (!mounted) return;
 
-      final downloadUrl = binaryAsset['browser_download_url'] as String;
-      final filename    = binaryAsset['name'] as String;
-      final tagName     = data['tag_name'] as String;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              dialogStateSetter = setDialogState;
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                child: GlassCard(
+                  borderColor: GemColors.accentBlue.withValues(alpha: 0.5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Firmware Update',
+                              style: TextStyle(
+                                color: GemColors.textPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: GemColors.textSecondary, size: 20),
+                              onPressed: () {
+                                deviceNotifier.cancelUpload();
+                                Navigator.of(dialogCtx).pop();
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        const CircularProgressIndicator(color: GemColors.accentBlue),
+                        const SizedBox(height: 20),
+                        LinearProgressIndicator(
+                          value: _uploadProgress,
+                          backgroundColor: Colors.black.withValues(alpha: 0.05),
+                          color: GemColors.accentBlue,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _uploadStatus,
+                                style: const TextStyle(color: GemColors.textSecondary, fontSize: 13),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              '${(_uploadProgress * 100).toStringAsFixed(0)}%',
+                              style: const TextStyle(
+                                color: GemColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 40,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: GemColors.statusAlert),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: () {
+                              deviceNotifier.cancelUpload();
+                              Navigator.of(dialogCtx).pop();
+                            },
+                            child: const Text(
+                              'Cancel Update',
+                              style: TextStyle(
+                                color: GemColors.statusAlert,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ).then((_) => dialogOpen = false);
 
-      // ── Step 3: Download & flash ────────────────────────────────────────
-      setState(() { _uploadStatus = 'Step 3/3 — Downloading $filename ($tagName)...'; });
-
-      final firmwareResponse = await http.get(Uri.parse(downloadUrl))
-          .timeout(const Duration(seconds: 120));
-
-      if (firmwareResponse.statusCode != 200) {
-        throw Exception('Download failed: HTTP ${firmwareResponse.statusCode}');
-      }
-
-      final bytes = firmwareResponse.bodyBytes;
-      setState(() { _uploadStatus = 'Flashing firmware to GEM device...'; });
-
-      final deviceNotifier = ref.read(deviceProvider.notifier);
+      const password = '123456789';
       final success = await deviceNotifier.uploadFirmware(
-        bytes,
-        filename,
+        fileBytes,
+        'firmware.bin',
+        password: password,
         onProgress: (progress) {
           if (mounted) {
             setState(() {
               _uploadProgress = progress;
               _uploadStatus = progress >= 1.0
-                  ? '✅ Flash done — GEM is rebooting with your settings!'
-                  : 'Flashing: ${(progress * 100).toStringAsFixed(0)}% complete...';
+                  ? '✅ Upload complete — GEM is rebooting!'
+                  : 'Uploading: ${(progress * 100).toStringAsFixed(0)}%';
             });
+            if (dialogStateSetter != null) {
+              dialogStateSetter!(() {});
+            }
           }
         },
       );
 
+      if (dialogOpen && mounted) {
+        Navigator.of(context).pop();
+      }
+
       if (mounted) {
-        setState(() { _isSavingAndReflashing = false; _uploadProgress = 0.0; });
+        setState(() {
+          _isUploading = false;
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success
-                ? '🚀 Done! GEM reflashed with $tagName and all your settings preserved.'
-                : '⚠️ Firmware flash failed. Settings were saved — try flashing again.'),
+            content: Text(success ? 'Firmware update successful! GEM is rebooting.' : 'Firmware update failed or cancelled.'),
             backgroundColor: success ? GemColors.statusActive : GemColors.statusAlert,
-            duration: const Duration(seconds: 5),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        setState(() { _isSavingAndReflashing = false; _uploadProgress = 0.0; });
+        setState(() {
+          _isUploading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Reflash failed: $e\n(Settings were already saved to the device.)'),
+            content: Text('Error: $e'),
             backgroundColor: GemColors.statusAlert,
-            duration: const Duration(seconds: 6),
           ),
         );
       }
@@ -802,7 +836,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     // Save to device provider & sync with ESP32
-    final success = await deviceNotifier.saveSettings(
+    final error = await deviceNotifier.saveSettings(
       userName: _nameController.text.trim(),
       deviceName: _nicknameController.text.trim(),
       wifiSsid: _ssidController.text.trim().isNotEmpty ? _ssidController.text.trim() : null,
@@ -814,8 +848,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? 'Profile settings synced locally and with device!' : 'Profile settings saved locally.'),
-          backgroundColor: success ? GemColors.statusActive : GemColors.statusWarning,
+          content: Text(error == null ? 'Profile settings synced locally and with device!' : 'Sync failed: $error'),
+          backgroundColor: error == null ? GemColors.statusActive : GemColors.statusWarning,
         ),
       );
     }
