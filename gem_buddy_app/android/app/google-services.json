@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "139410224416",
+    "project_id": "gem-buddy",
+    "storage_bucket": "gem-buddy.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:139410224416:android:eb433ff27678de6f35d345",
+        "android_client_info": {
+          "package_name": "com.shovin.gem.gem"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBw45RQjdVcnoEXMpEyr7O7h10vf1hRynI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

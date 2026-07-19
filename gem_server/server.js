@@ -10,20 +10,30 @@ const port = process.env.PORT || 3000;
 
 // ── Firebase Admin SDK Initialization ──────────────────────────────────────────
 let admin = null;
-const serviceAccountPath = path.join(__dirname, 'service-account.json');
-if (fs.existsSync(serviceAccountPath)) {
-  try {
-    admin = require('firebase-admin');
+try {
+  admin = require('firebase-admin');
+  const serviceAccountEnv = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const serviceAccountPath = path.join(__dirname, 'service-account.json');
+
+  if (serviceAccountEnv) {
+    const serviceAccount = JSON.parse(serviceAccountEnv);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('[FCM] Firebase Admin SDK initialized successfully via Environment Variable.');
+  } else if (fs.existsSync(serviceAccountPath)) {
     const serviceAccount = require(serviceAccountPath);
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
-    console.log('[FCM] Firebase Admin SDK initialized successfully.');
-  } catch (e) {
-    console.error('[FCM] Failed to initialize Firebase Admin:', e.message);
+    console.log('[FCM] Firebase Admin SDK initialized successfully via service-account.json.');
+  } else {
+    console.log('[FCM] Service account credentials not found. Push notifications will be skipped.');
+    admin = null;
   }
-} else {
-  console.log('[FCM] service-account.json not found. Push notifications will be skipped.');
+} catch (e) {
+  console.error('[FCM] Failed to initialize Firebase Admin:', e.message);
+  admin = null;
 }
 
 const fcmTokens = new Set();
