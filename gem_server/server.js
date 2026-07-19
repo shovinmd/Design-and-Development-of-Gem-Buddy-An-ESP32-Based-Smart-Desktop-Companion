@@ -139,6 +139,7 @@ app.get('/health', (req, res) => {
     appOnline:    isOnline('app'),
     lastSeenDevice: lastSeen.device ? new Date(lastSeen.device).toISOString() : null,
     lastSeenApp:    lastSeen.app    ? new Date(lastSeen.app).toISOString()    : null,
+    firebaseInitialized: !!admin,
   });
 });
 
