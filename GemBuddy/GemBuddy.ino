@@ -206,22 +206,47 @@ void sendGuardPing() {
 
   String body = "source=device&device=" + String(settings.deviceName) + "&battery=" + String(rt.batteryPercent) + "&ldr=" + String(rt.ldrRaw);
 
+  int code = -1;
+  String response = "";
+
   if (pingUrl.startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, pingUrl);
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-    int code = http.POST(body);
+    code = http.POST(body);
+    if (code == 200) {
+      response = http.getString();
+    }
     if (code > 0) Serial.printf("[Ping] /api/ping (secure) %d\n", code);
     http.end();
   } else {
     HTTPClient http;
     http.begin(pingUrl);
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-    int code = http.POST(body);
+    code = http.POST(body);
+    if (code == 200) {
+      response = http.getString();
+    }
     if (code > 0) Serial.printf("[Ping] /api/ping %d\n", code);
     http.end();
+  }
+
+  if (code == 200 && response.length() > 0) {
+    if (response.indexOf("\"guardMode\":true") >= 0) {
+      if (!settings.monitoringEnabled) {
+        settings.monitoringEnabled = true;
+        saveSettings();
+        Serial.println("[GuardSync] Enabled by broker ping response");
+      }
+    } else if (response.indexOf("\"guardMode\":false") >= 0) {
+      if (settings.monitoringEnabled) {
+        settings.monitoringEnabled = false;
+        saveSettings();
+        Serial.println("[GuardSync] Disabled by broker ping response");
+      }
+    }
   }
 }
 // ──────────────────────────────────────────────────────────────────────────────

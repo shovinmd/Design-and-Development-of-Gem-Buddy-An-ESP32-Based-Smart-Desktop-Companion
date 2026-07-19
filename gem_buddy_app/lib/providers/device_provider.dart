@@ -965,11 +965,10 @@ class DeviceNotifier extends Notifier<DeviceState> {
   }
 
   Future<String?> toggleBrokerGuardMode(bool active) async {
+    // Attempt local toggle first
     final physicalError = await saveSettings(monitoringEnabled: active);
-    if (physicalError != null) {
-      return physicalError;
-    }
     
+    // If a broker is configured, toggle the guard state on the broker regardless of local direct REST success
     if (state.brokerIpAddress.isNotEmpty) {
       try {
         final response = await http.post(
@@ -991,6 +990,11 @@ class DeviceNotifier extends Notifier<DeviceState> {
         if (kDebugMode) print("Failed to toggle broker guard mode: $e");
         return e.toString();
       }
+    }
+    
+    // If no broker is set and local sync failed, return the physical error
+    if (physicalError != null) {
+      return physicalError;
     }
     
     state = state.copyWith(monitoringEnabled: active);
