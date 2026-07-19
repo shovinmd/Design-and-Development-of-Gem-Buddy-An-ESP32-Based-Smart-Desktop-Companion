@@ -407,6 +407,12 @@ class SecurityScreen extends ConsumerWidget {
                               displaySubtitle = event == 'alarm'
                                   ? 'A scheduled reminder is ringing on GEM.'
                                   : 'Reminder dismissed by user action.';
+                            } else if (event == 'guard-enabled' || event == 'guard-disabled') {
+                              iconData = event == 'guard-enabled' ? Icons.shield_rounded : Icons.shield_outlined;
+                              iconColor = event == 'guard-enabled' ? GemColors.statusActive : GemColors.textSecondary;
+                              displayTitle = event == 'guard-enabled' ? 'Guard Mode Active' : 'Guard Mode Inactive';
+                              final toggler = log['device'] ?? 'system';
+                              displaySubtitle = 'Toggled by $toggler.';
                             }
 
                             return Row(

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'timeline_provider.dart';
 
 // State model representing the ESP32 GEM configuration & real-time telemetry
@@ -1027,6 +1028,8 @@ class DeviceNotifier extends Notifier<DeviceState> {
     SharedPreferences.getInstance().then((prefs) {
       prefs.setString('saved_broker_ip', brokerIp);
     });
+
+    _setupFCM(brokerIp);
     
     try {
       String wsUrl;
@@ -1161,6 +1164,45 @@ class DeviceNotifier extends Notifier<DeviceState> {
     } catch (e) {
       state = state.copyWith(isBrokerConnected: false);
       if (kDebugMode) print("WS connection failed: $e");
+    }
+  }
+
+  Future<void> _setupFCM(String brokerIp) async {
+    if (brokerIp.isEmpty) return;
+    try {
+      FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+      await messaging.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
+      );
+
+      String? token = await messaging.getToken();
+      if (token != null) {
+        if (kDebugMode) print("FCM Token: $token");
+        final registerUrl = _getRestUrl('/api/fcm/register');
+        await http.post(
+          Uri.parse(registerUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'token': token}),
+        ).timeout(const Duration(seconds: 5));
+      }
+
+      messaging.onTokenRefresh.listen((newToken) async {
+        final registerUrl = _getRestUrl('/api/fcm/register');
+        await http.post(
+          Uri.parse(registerUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'token': newToken}),
+        ).timeout(const Duration(seconds: 5));
+      });
+    } catch (e) {
+      if (kDebugMode) print("Failed to setup FCM: $e");
     }
   }
 

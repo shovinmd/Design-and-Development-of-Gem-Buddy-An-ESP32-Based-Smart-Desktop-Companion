@@ -2,9 +2,51 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// ── Firebase Admin SDK Initialization ──────────────────────────────────────────
+let admin = null;
+const serviceAccountPath = path.join(__dirname, 'service-account.json');
+if (fs.existsSync(serviceAccountPath)) {
+  try {
+    admin = require('firebase-admin');
+    const serviceAccount = require(serviceAccountPath);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('[FCM] Firebase Admin SDK initialized successfully.');
+  } catch (e) {
+    console.error('[FCM] Failed to initialize Firebase Admin:', e.message);
+  }
+} else {
+  console.log('[FCM] service-account.json not found. Push notifications will be skipped.');
+}
+
+const fcmTokens = new Set();
+
+async function sendPushNotification(title, body) {
+  if (!admin || fcmTokens.size === 0) {
+    console.log(`[FCM] Push skipped: adminInit=${!!admin}, tokensRegistered=${fcmTokens.size}`);
+    return;
+  }
+  
+  const tokens = Array.from(fcmTokens);
+  const message = {
+    notification: { title, body },
+    tokens: tokens,
+  };
+
+  try {
+    const response = await admin.messaging().sendEachForMulticast(message);
+    console.log(`[FCM] Sent: ${response.successCount} succeeded; ${response.failureCount} failed.`);
+  } catch (error) {
+    console.error('[FCM] Error sending push notification:', error);
+  }
+}
 
 app.use(cors());
 app.use(express.json());
@@ -165,6 +207,16 @@ app.post('/api/guard/clear', (req, res) => {
   res.json({ success: true });
 });
 
+// ── REST: FCM token registration ──────────────────────────────────────────────
+app.post('/api/fcm/register', (req, res) => {
+  const { token } = req.body;
+  if (token) {
+    fcmTokens.add(token);
+    console.log(`[FCM] Registered token: ${token.substring(0, 10)}... (Total: ${fcmTokens.size})`);
+  }
+  res.json({ success: true });
+});
+
 // ── REST: Webhook (ESP32 security events) ─────────────────────────────────────
 app.post('/webhook', (req, res) => {
   const device = req.body.device || 'GEM';
@@ -207,6 +259,28 @@ app.post('/webhook', (req, res) => {
 
     const count = broadcast(payload);
     console.log(`[Broadcast] Sent alert to ${count} client(s).`);
+
+    // Send push notification
+    let pushTitle = 'GEM Security Alert';
+    let pushBody = `${device} triggered an event.`;
+    if (event === 'shadow-detected') {
+      pushTitle = '🚨 GEM Shadow Alert';
+      pushBody = `Shadow detected! LDR reading: ${ldr}`;
+    } else if (event === 'flash-detected') {
+      pushTitle = '🚨 GEM Light Spike Alert';
+      pushBody = `Unexpected flash/light spike! LDR reading: ${ldr}`;
+    } else if (event === 'touch-down' || event === 'touch-detected') {
+      pushTitle = '🚨 GEM Touch Alert';
+      pushBody = `Physical touch detected on GEM!`;
+    } else if (event === 'long-touch') {
+      pushTitle = '🚨 GEM Long Touch Alert';
+      pushBody = `Sustained touch detected on GEM!`;
+    } else if (event === 'alarm') {
+      pushTitle = '⏰ GEM Reminder';
+      pushBody = `Your scheduled reminder/alarm is ringing!`;
+    }
+    
+    sendPushNotification(pushTitle, pushBody);
   }
 
   res.status(200).send('OK');
