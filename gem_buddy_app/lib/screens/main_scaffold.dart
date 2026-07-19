@@ -9,6 +9,7 @@ import '../providers/settings_provider.dart';
 import 'home_screen.dart';
 import 'control_screen.dart';
 import 'security_screen.dart';
+import 'guide_screen.dart';
 import 'timeline_screen.dart';
 import 'settings_screen.dart';
 import 'onboarding_screen.dart';
@@ -40,6 +41,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     HomeScreen(),
     ControlScreen(),
     SecurityScreen(),
+    GuideScreen(),
     TimelineScreen(),
     SettingsScreen(),
   ];

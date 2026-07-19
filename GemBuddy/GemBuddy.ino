@@ -2114,12 +2114,39 @@ void applySettingsFromRequest() {
   }
 
   bool wifiChanged = server.hasArg("wifiSsid") || server.hasArg("wifiPass");
+
+  // If WiFi credentials were just provided and wifiEnabled, attempt an immediate fast connect
+  // so the device joins the network without waiting for a full reboot.
+  if (wifiChanged && settings.wifiEnabled && settings.wifiSsid[0] != '\0' && WiFi.status() != WL_CONNECTED) {
+    Serial.println("[Settings] New WiFi credentials — attempting quick connect...");
+    WiFi.mode(WIFI_STA);
+    if (settings.wifiPass[0] == '\0') {
+      WiFi.begin(settings.wifiSsid);
+    } else {
+      WiFi.begin(settings.wifiSsid, settings.wifiPass);
+    }
+    uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
+      delay(200);
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("[Settings] Quick connect succeeded! IP: " + WiFi.localIP().toString());
+      rt.hotspotActiveState = false;
+      configTime(settings.timezoneOffsetMinutes * 60, 0, "pool.ntp.org", "time.nist.gov");
+      if (MDNS.begin("gem-buddy")) { MDNS.addService("http", "tcp", 80); }
+      udp.begin(8266);
+    } else {
+      Serial.println("[Settings] Quick connect failed — will retry on next setupNetworking.");
+      WiFi.mode(WIFI_AP_STA); // Fall back to AP so device remains accessible
+    }
+  }
+
   if (settings.monitoringEnabled && (!oldMonitoring || !settings.wifiEnabled || wifiChanged)) {
     settings.wifiEnabled = true;
     setupNetworking();
-    sendGuardToggleEvent(true); // Notify broker → app: guard is now ON
+    sendGuardToggleEvent(true); // Notify broker -> app: guard is now ON
   } else if (!settings.monitoringEnabled && oldMonitoring) {
-    sendGuardToggleEvent(false); // Notify broker → app: guard is now OFF
+    sendGuardToggleEvent(false); // Notify broker -> app: guard is now OFF
   }
 
   for (uint8_t i = 0; i < 6; ++i) {
@@ -2366,9 +2393,9 @@ void setupNetworking() {
   WiFi.mode(WIFI_OFF);
   delay(150); // Allow RF radio to settle
 
-  const bool canConnectStation = settings.monitoringEnabled && settings.wifiSsid[0] != '\0';
-  // Keep hotspot active on boot for 10 min window (even if hotspotEnabled is false in settings)
-  const bool keepHotspot = true; 
+  // Connect to station if WiFi is enabled and credentials exist
+  const bool canConnectStation = settings.wifiEnabled && settings.wifiSsid[0] != '\0';
+  // Keep hotspot active on boot for setup window
 
   Serial.println("Starting SoftAP hotspot (temporary boot window)...");
   startHotspotPortal(canConnectStation, !settings.setupComplete);

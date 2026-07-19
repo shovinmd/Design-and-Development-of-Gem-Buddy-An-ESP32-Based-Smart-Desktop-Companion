@@ -18,6 +18,7 @@ class FloatingGlassNavBar extends StatelessWidget {
       _NavBarItem(icon: Icons.home_rounded, label: 'Home'),
       _NavBarItem(icon: Icons.sports_esports_rounded, label: 'Control'),
       _NavBarItem(icon: Icons.shield_rounded, label: 'Security'),
+      _NavBarItem(icon: Icons.menu_book_rounded, label: 'Guide'),
       _NavBarItem(icon: Icons.analytics_rounded, label: 'Timeline'),
       _NavBarItem(icon: Icons.settings_rounded, label: 'Settings'),
     ];
