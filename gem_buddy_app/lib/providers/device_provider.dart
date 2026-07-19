@@ -51,6 +51,8 @@ class DeviceState {
   final bool isBrokerConnected;
   final List<dynamic> securityLogs;
 
+  final String firmwareVersion;
+
   DeviceState({
     this.deviceName = 'GEM',
     this.userName = 'Friend',
@@ -87,6 +89,7 @@ class DeviceState {
     this.brokerIpAddress = 'design-and-development-of-gem-buddy-an.onrender.com',
     this.isBrokerConnected = false,
     this.securityLogs = const [],
+    this.firmwareVersion = '1.0',
   });
 
   DeviceState copyWith({
@@ -125,6 +128,7 @@ class DeviceState {
     String? brokerIpAddress,
     bool? isBrokerConnected,
     List<dynamic>? securityLogs,
+    String? firmwareVersion,
   }) {
     return DeviceState(
       deviceName: deviceName ?? this.deviceName,
@@ -162,6 +166,7 @@ class DeviceState {
       brokerIpAddress: brokerIpAddress ?? this.brokerIpAddress,
       isBrokerConnected: isBrokerConnected ?? this.isBrokerConnected,
       securityLogs: securityLogs ?? this.securityLogs,
+      firmwareVersion: firmwareVersion ?? this.firmwareVersion,
     );
   }
 }
@@ -509,6 +514,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
         isHeartScanning: isScanningOnHardware,
         bpm: deviceBpm,
         pulseRaw: data['pulseRaw'] ?? 0,
+        firmwareVersion: data['firmwareVersion'] ?? state.firmwareVersion,
       );
 
       if (data['faceMode'] == 8 && state.activeAlarmIndex == 255) {

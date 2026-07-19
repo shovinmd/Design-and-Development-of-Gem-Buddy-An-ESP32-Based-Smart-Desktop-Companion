@@ -10,6 +10,7 @@
 #include <Update.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
+#include <WiFiClientSecure.h>
 
 #include "GemBuddyConfig.h"
 #include "eyes.h"
@@ -203,21 +204,25 @@ void sendGuardPing() {
   String base = (lastSlash > 8) ? webhook.substring(0, lastSlash) : webhook;
   String pingUrl = base + "/api/ping";
 
-  HTTPClient http;
-  http.begin(pingUrl);
-  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  String body = "source=device&device=" + String(settings.deviceName) + "&battery=" + String(rt.batteryPercent) + "&ldr=" + String(rt.ldrRaw);
 
-  String body = "source=device";
-  body += "&device=";
-  body += settings.deviceName;
-  body += "&battery=";
-  body += String(rt.batteryPercent);
-  body += "&ldr=";
-  body += String(rt.ldrRaw);
-
-  int code = http.POST(body);
-  if (code > 0) Serial.printf("[Ping] /api/ping → %d\n", code);
-  http.end();
+  if (pingUrl.startsWith("https://")) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.begin(client, pingUrl);
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    int code = http.POST(body);
+    if (code > 0) Serial.printf("[Ping] /api/ping (secure) %d\n", code);
+    http.end();
+  } else {
+    HTTPClient http;
+    http.begin(pingUrl);
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    int code = http.POST(body);
+    if (code > 0) Serial.printf("[Ping] /api/ping %d\n", code);
+    http.end();
+  }
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -327,20 +332,26 @@ void triggerCloudEvent(const char* reason) {
   if (now - rt.lastCloudEvent < CLOUD_EVENT_COOLDOWN_MS) return;
   rt.lastCloudEvent = now;
 
-  HTTPClient http;
-  http.begin(settings.cloudWebhook);
-  http.addHeader("Content-Type", "application/json");
+  String url = String(settings.cloudWebhook);
+  String payload = "{\"device\":\"" + String(settings.deviceName) + "\",\"user\":\"" + String(settings.userName) + "\",\"reason\":\"" + String(reason) + "\",\"ldr\":" + String(rt.ldrRaw) + "}";
 
-  // Only send device identity, event reason, and LDR — no battery
-  String payload = "{";
-  payload += "\"device\":\"" + String(settings.deviceName) + "\",";
-  payload += "\"user\":\"" + String(settings.userName) + "\",";
-  payload += "\"reason\":\"" + String(reason) + "\",";
-  payload += "\"ldr\":" + String(rt.ldrRaw);
-  payload += "}";
-
-  http.POST(payload);
-  http.end();
+  if (url.startsWith("https://")) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(payload);
+    Serial.printf("[Webhook] Sent (secure) event=%s code=%d\n", reason, code);
+    http.end();
+  } else {
+    HTTPClient http;
+    http.begin(url);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(payload);
+    Serial.printf("[Webhook] Sent event=%s code=%d\n", reason, code);
+    http.end();
+  }
 }
 
 // Notify the broker that guard mode was toggled — broker pushes guard_toggle to app via WebSocket
@@ -354,19 +365,25 @@ void sendGuardToggleEvent(bool active) {
   String base = (lastSlash > 8) ? webhook.substring(0, lastSlash) : webhook;
   String url = base + "/api/guard/toggle";
 
-  HTTPClient http;
-  http.begin(url);
-  http.addHeader("Content-Type", "application/json");
+  String payload = "{\"active\":" + String(active ? "true" : "false") + ",\"device\":\"" + String(settings.deviceName) + "\"}";
 
-  String payload = "{\"active\":";
-  payload += active ? "true" : "false";
-  payload += ",\"device\":\"";
-  payload += String(settings.deviceName);
-  payload += "\"}";
-
-  http.POST(payload);
-  http.end();
-  Serial.printf("[Guard] Sent toggle event: active=%d\n", active);
+  if (url.startsWith("https://")) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(payload);
+    http.end();
+    Serial.printf("[Guard] Sent toggle event (secure): active=%d code=%d\n", active, code);
+  } else {
+    HTTPClient http;
+    http.begin(url);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(payload);
+    http.end();
+    Serial.printf("[Guard] Sent toggle event: active=%d code=%d\n", active, code);
+  }
 }
 
 void enterDeepSleep() {
@@ -1207,7 +1224,7 @@ void drawInfoScreen() {
   u8g2.drawStr(10, 22, "Creator:");
   u8g2.drawStr(55, 22, "Shovin");
   u8g2.drawStr(10, 30, "Version:");
-  u8g2.drawStr(55, 30, "1.4");
+  u8g2.drawStr(55, 30, "1.5");
   u8g2.drawStr(10, 38, "Build:");
   u8g2.drawStr(55, 38, "Jul 19 2026");
   u8g2.drawStr(10, 46, "Time:");
@@ -1889,7 +1906,8 @@ String buildStateJson() {
   json += "\"timeValid\":" + String(validClock() ? "true" : "false") + ",";
   json += "\"bpm\":" + String(rt.bpm) + ",";
   json += "\"pulseRaw\":" + String(rt.heartModeActive ? analogRead(PIN_PULSE_ADC) : 0) + ",";
-  json += "\"ip\":\"" + WiFi.localIP().toString() + "\"";
+  json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+  json += "\"firmwareVersion\":\"1.5\"";
   json += ",\"alarms\":[";
   for (uint8_t i = 0; i < settings.alarmCount && i < 6; ++i) {
     if (i) json += ",";

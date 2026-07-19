@@ -475,29 +475,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           color: Colors.black.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Column(
+                        child: Column(
                           children: [
-                            Row(
+                            const Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('Creator', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
                                 Text('Shovin', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
                               ],
                             ),
-                            SizedBox(height: 8),
+                            const SizedBox(height: 8),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('Version', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
-                                Text('1.3', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                                const Text('Device Version', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
+                                Text(
+                                  deviceState.isSimulated 
+                                      ? '1.5 (Simulated)' 
+                                      : (deviceState.firmwareVersion.isEmpty ? 'Unknown' : deviceState.firmwareVersion), 
+                                  style: const TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)
+                                ),
                               ],
                             ),
-                            SizedBox(height: 8),
-                            Row(
+                            const SizedBox(height: 8),
+                            const Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Available Update', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
+                                Text('1.5', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('Release Date', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
-                                Text('July 18, 2026', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                                Text('July 19, 2026', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ],
@@ -562,6 +575,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _flashFirmwareBackground() async {
+    final deviceState = ref.read(deviceProvider);
+    final deviceNotifier = ref.read(deviceProvider.notifier);
+
+    if (!deviceState.isConnected && !deviceState.isSimulated) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: App is not connected to the GEM device. Please check your Wi-Fi connection.'),
+            backgroundColor: GemColors.statusAlert,
+          ),
+        );
+      }
+      return;
+    }
+
+    final bool isUpToDate = deviceState.firmwareVersion == '1.5';
+    String titleText = 'Update Device?';
+    String messageText = 'Do you want to flash the update? The GEM device will reboot automatically once completed.';
+    String confirmButtonText = 'Update';
+
+    if (isUpToDate) {
+      titleText = 'Device Up to Date';
+      messageText = 'Your GEM device is already running the latest firmware version (1.5). Do you still want to re-flash and override it?';
+      confirmButtonText = 'Override';
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => Dialog(
@@ -574,18 +613,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Update Device?',
-                  style: TextStyle(
+                Text(
+                  titleText,
+                  style: const TextStyle(
                     color: GemColors.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Do you want to flash the update? The GEM device will reboot automatically once completed.',
-                  style: TextStyle(
+                Text(
+                  messageText,
+                  style: const TextStyle(
                     color: GemColors.textSecondary,
                     fontSize: 14,
                     height: 1.4,
@@ -615,7 +654,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ),
                       onPressed: () => Navigator.of(dialogCtx).pop(true),
-                      child: const Text('Update'),
+                      child: Text(confirmButtonText),
                     ),
                   ],
                 ),
@@ -627,21 +666,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     if (confirm != true) return;
-
-    final deviceState = ref.read(deviceProvider);
-    final deviceNotifier = ref.read(deviceProvider.notifier);
-
-    if (!deviceState.isConnected && !deviceState.isSimulated) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error: App is not connected to the GEM device. Please check your Wi-Fi connection.'),
-            backgroundColor: GemColors.statusAlert,
-          ),
-        );
-      }
-      return;
-    }
 
     try {
       setState(() {
