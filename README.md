@@ -1,4 +1,4 @@
-# GEM (Gem Buddy) — Smart Desktop Companion (v1.7)
+# GEM (Gem Buddy) — Smart Desktop Companion (v1.8)
 
 GEM is an interactive, ESP32-based smart desktop companion featuring hardware sensors, a custom OLED animation system (day/evening/night face modes), scheduled alarms, and a secure **Desk Guard Mode**. 
 
@@ -21,7 +21,7 @@ graph TD
 
 ---
 
-## 🌟 Key Features in v1.7
+## 🌟 Key Features in v1.8
 
 *   **Desk Guard Mode:** Activating Guard Mode turns GEM into a desktop security monitor. Sensor anomalies (shadows, light flashes, body touches) trigger webhook alerts. 
 *   **Remote Guard Sync (Any Network):** Allows toggling Guard Mode from outside the home network. If the app cannot reach the local ESP32 IP address, it updates the cloud broker. The device periodically reads the broker's ping responses and syncs its local configuration.

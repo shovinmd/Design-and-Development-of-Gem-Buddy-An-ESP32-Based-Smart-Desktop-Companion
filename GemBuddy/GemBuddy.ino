@@ -1297,7 +1297,7 @@ void drawInfoScreen() {
   u8g2.drawStr(10, 22, "Creator:");
   u8g2.drawStr(55, 22, "Shovin");
   u8g2.drawStr(10, 30, "Version:");
-  u8g2.drawStr(55, 30, "1.7");
+  u8g2.drawStr(55, 30, "1.8");
   u8g2.drawStr(10, 38, "Build:");
   u8g2.drawStr(55, 38, "Jul 19 2026");
   u8g2.drawStr(10, 46, "Time:");
@@ -1980,7 +1980,7 @@ String buildStateJson() {
   json += "\"bpm\":" + String(rt.bpm) + ",";
   json += "\"pulseRaw\":" + String(rt.heartModeActive ? analogRead(PIN_PULSE_ADC) : 0) + ",";
   json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
-  json += "\"firmwareVersion\":\"1.7\"";
+  json += "\"firmwareVersion\":\"1.8\"";
   json += ",\"alarms\":[";
   for (uint8_t i = 0; i < settings.alarmCount && i < 6; ++i) {
     if (i) json += ",";
