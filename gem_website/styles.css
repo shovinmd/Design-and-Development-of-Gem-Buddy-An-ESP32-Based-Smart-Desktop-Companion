@@ -1578,4 +1578,19 @@ body {
     .footer-info {
         margin: 0 auto;
     }
+    .specs-section {
+        padding: 60px 0;
+    }
+    .specs-grid {
+        gap: 24px;
+    }
+    .spec-card {
+        padding: 30px 24px;
+    }
+    .spec-card strong {
+        display: block !important;
+        width: 100% !important;
+        margin-bottom: 6px;
+    }
 }
+
