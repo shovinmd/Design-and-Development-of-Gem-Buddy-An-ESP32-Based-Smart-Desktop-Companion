@@ -36,7 +36,8 @@ try {
     });
     console.log('[FCM] Firebase Admin SDK initialized successfully via Environment Variable.');
   } else if (serviceAccountPath) {
-    const serviceAccount = require(serviceAccountPath);
+    const fileContent = fs.readFileSync(serviceAccountPath, 'utf8');
+    const serviceAccount = JSON.parse(fileContent);
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
