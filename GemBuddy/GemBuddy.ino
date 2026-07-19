@@ -321,7 +321,7 @@ void toggleLampMode() {
 }
 
 void triggerCloudEvent(const char* reason) {
-  if (!settings.monitoringEnabled || WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) return;
   if (settings.cloudWebhook[0] == '\0') return;
 
   uint32_t now = millis();

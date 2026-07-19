@@ -1040,8 +1040,21 @@ class DeviceNotifier extends Notifier<DeviceState> {
           try {
             final data = json.decode(message);
             if (data['event'] == 'alert') {
-              final reason = data['reason'] ?? 'Security alert';
+              final rawReason = data['reason'] ?? 'Security alert';
               final device = data['device'] ?? 'GEM';
+              
+              String reason = rawReason;
+              if (rawReason == 'shadow-detected') {
+                reason = 'Shadow';
+              } else if (rawReason == 'flash-detected') {
+                reason = 'Light Spike';
+              } else if (rawReason == 'touch-detected' || rawReason == 'touch-down') {
+                reason = 'Touch';
+              } else if (rawReason == 'long-touch') {
+                reason = 'Sustained Touch';
+              } else if (rawReason == 'alarm') {
+                reason = 'Reminder';
+              }
 
               state = state.copyWith(
                 lastNotificationMessage: '🚨 GUARD ALERT: $reason detected on $device!',

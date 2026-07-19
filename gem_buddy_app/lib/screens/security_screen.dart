@@ -393,13 +393,20 @@ class SecurityScreen extends ConsumerWidget {
                               iconColor = GemColors.statusWarning;
                               displayTitle = 'Sudden Flash / Light Spike';
                               displaySubtitle = 'Unexpected bright light detected — LDR reading: $ldr';
-                            } else if (event == 'touch-down' || event == 'long-touch') {
+                            } else if (event == 'touch-down' || event == 'long-touch' || event == 'touch-detected') {
                               iconData = Icons.touch_app_rounded;
                               iconColor = GemColors.accentPurple;
                               displayTitle = event == 'long-touch'
                                   ? 'Sustained Touch Detected'
                                   : 'Physical Touch Intercept';
                               displaySubtitle = 'GEM body was physically touched — LDR: $ldr';
+                            } else if (event == 'alarm' || event == 'alarm-dismissed') {
+                              iconData = event == 'alarm' ? Icons.alarm_rounded : Icons.alarm_on_rounded;
+                              iconColor = event == 'alarm' ? GemColors.statusAlert : GemColors.statusActive;
+                              displayTitle = event == 'alarm' ? 'Alarm/Reminder Triggered' : 'Alarm Dismissed';
+                              displaySubtitle = event == 'alarm'
+                                  ? 'A scheduled reminder is ringing on GEM.'
+                                  : 'Reminder dismissed by user action.';
                             }
 
                             return Row(

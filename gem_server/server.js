@@ -177,7 +177,7 @@ app.post('/webhook', (req, res) => {
   // Update device last-seen
   lastSeen.device = Date.now();
 
-  const isSecurityAlert = ['shadow-detected','flash-detected','touch-down','long-touch','touch-detected'].includes(event);
+  const isSecurityAlert = ['shadow-detected','flash-detected','touch-down','long-touch','touch-detected','alarm','alarm-dismissed'].includes(event);
   const logEntry = {
     timestamp:   new Date().toISOString(),
     event,
