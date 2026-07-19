@@ -209,7 +209,6 @@ void sendGuardPing() {
   if (pingUrl.startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
-    client.setBufferSizes(1024, 512); // Reduce memory/heap consumption for secure endpoint
     HTTPClient http;
     http.begin(client, pingUrl);
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -344,7 +343,6 @@ void triggerCloudEvent(const char* reason) {
   if (url.startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
-    client.setBufferSizes(1024, 512); // Reduce heap memory consumption
     HTTPClient http;
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
@@ -377,7 +375,6 @@ void sendGuardToggleEvent(bool active) {
   if (url.startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
-    client.setBufferSizes(1024, 512); // Reduce heap memory consumption
     HTTPClient http;
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
