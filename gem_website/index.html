@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Meet GEM (Gem Buddy) - The ultimate interactive desktop companion robot and project featuring security guard modes, custom OLED face animations, telemetry, and a Flutter companion app.">
+    <title>GEM (Gem Buddy) — Premium Interactive Desktop Companion Robot</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Background Glows -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <!-- Header / Navigation -->
+    <header class="header">
+        <div class="header-container">
+            <a href="#" class="logo-link">
+                <img src="assets/images/logo.png" alt="GEM Logo" class="logo-img" id="nav-logo">
+                <span class="logo-text">GEM <span class="accent-text">BUDDY</span></span>
+            </a>
+            
+            <nav class="nav" id="main-nav">
+                <ul class="nav-list">
+                    <li><a href="#features" class="nav-link">Features</a></li>
+                    <li><a href="#simulator" class="nav-link">Interactive Demo</a></li>
+                    <li><a href="#app" class="nav-link">Companion App</a></li>
+                    <li><a href="#specs" class="nav-link">Specs</a></li>
+                    <li><a href="#tutorial" class="nav-link">Tutorial</a></li>
+                    <li><a href="#prebook" class="nav-btn">Notify Me</a></li>
+                </ul>
+            </nav>
+            
+            <button class="menu-toggle" id="menu-toggle" aria-label="Toggle Menu">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <div class="container hero-container">
+                <div class="hero-content">
+                    <div class="badge">Introducing v1.8</div>
+                    <h1 class="hero-title">Your Smart <br><span class="gradient-text">Desktop Companion</span> Robot</h1>
+                    <p class="hero-description">
+                        GEM is a highly interactive, ESP32-powered desktop companion featuring rich OLED face expressions, light telemetry tracking, secure touch sensors, and a real-time Desk Guard security system.
+                    </p>
+                    <div class="hero-actions">
+                        <a href="#tutorial" class="btn btn-primary" id="hero-watch-btn">
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            Watch Tutorial
+                        </a>
+                        <a href="#prebook" class="btn btn-secondary" id="hero-book-btn">Get notified when booking starts</a>
+                    </div>
+                </div>
+                
+                <div class="hero-image-container">
+                    <div class="hero-glow-back"></div>
+                    <img src="assets/images/gem_device_mockup.jpg" alt="GEM Desktop Companion Hardware Rendering" class="hero-img" id="hero-mockup-img">
+                </div>
+            </div>
+        </section>
+
+        <!-- Features Showcase Section -->
+        <section id="features" class="features-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Hardware Meets <span class="gradient-text">Personality</span></h2>
+                    <p class="section-subtitle">Packed with sensors, responsive displays, and security functions, GEM brings your workspace to life.</p>
+                </div>
+                
+                <div class="features-grid">
+                    <!-- Feature 1: OLED expressions -->
+                    <div class="feature-card" id="feature-oled">
+                        <div class="feature-icon-wrapper purple-glow">
+                            <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12C2 12 5 5 12 5C19 5 22 12 22 12C22 12 19 19 12 19C5 19 2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </div>
+                        <h3>OLED Face Expressions</h3>
+                        <p>Dynamic emotions and animated eyes that react to time of day and physical touch interaction.</p>
+                    </div>
+
+                    <!-- Feature 2: Desk Guard Mode -->
+                    <div class="feature-card" id="feature-guard">
+                        <div class="feature-icon-wrapper red-glow">
+                            <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        </div>
+                        <h3>Desk Guard Mode</h3>
+                        <p>Arm GEM when you step away. Any light fluctuations or physical touch will trigger security webhook logs.</p>
+                    </div>
+
+                    <!-- Feature 3: Live Telemetry -->
+                    <div class="feature-card" id="feature-telemetry">
+                        <div class="feature-icon-wrapper blue-glow">
+                            <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                        </div>
+                        <h3>LDR Telemetry</h3>
+                        <p>Calibrated ambient light tracking. GEM translates environment lumens from dark 0% to bright 100%.</p>
+                    </div>
+
+                    <!-- Feature 4: Capacitive Touch -->
+                    <div class="feature-card" id="feature-touch">
+                        <div class="feature-icon-wrapper green-glow">
+                            <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        </div>
+                        <h3>Capacitive Sensing</h3>
+                        <p>Interactive touch pins react to user touch, letting you pet GEM, trigger pings, or silence alarms.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Simulator Section -->
+        <section id="simulator" class="simulator-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Interact with <span class="gradient-text">GEM Buddy</span></h2>
+                    <p class="section-subtitle">Experience GEM's OLED screen states in real-time. Use the simulator buttons below to test its emotions.</p>
+                </div>
+                
+                <div class="simulator-widget" id="sim-widget">
+                    <div class="simulator-device">
+                        <!-- Outer Casing of Device -->
+                        <div class="device-body">
+                            <div class="device-glow"></div>
+                            <!-- Screen Bezel -->
+                            <div class="device-screen-bezel">
+                                <div class="device-sensor-hole"></div>
+                                <!-- OLED Display Screen -->
+                                <div class="device-screen" id="device-screen-element">
+                                    <!-- Sleep Mode Overlay Zzz -->
+                                    <div class="sleep-animations" id="sleep-overlay">
+                                        <span>Z</span>
+                                        <span>z</span>
+                                        <span>z</span>
+                                    </div>
+                                    <!-- Guard Alert Flashing -->
+                                    <div class="guard-overlay" id="guard-overlay">
+                                        <div class="radar-ping"></div>
+                                        <span class="status-badge-live">GUARD ACTIVE</span>
+                                    </div>
+                                    <!-- Actual face display -->
+                                    <img src="assets/images/gem_happy.jpg" alt="GEM Face Expression" class="device-face-img" id="device-face-img">
+                                </div>
+                            </div>
+                            <!-- Stand Base -->
+                            <div class="device-stand"></div>
+                            <!-- Custom Branding Label -->
+                            <div class="device-label">GEM BUDDY</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Simulator Controls -->
+                    <div class="simulator-controls-panel">
+                        <h3>Simulate Device Mode</h3>
+                        <p class="control-help">Select a mode to update GEM's display and state:</p>
+                        
+                        <div class="controls-grid">
+                            <button class="ctrl-btn active" data-face="happy" id="btn-face-happy">
+                                <span class="btn-dot happy-dot"></span> Happy Face
+                            </button>
+                            <button class="ctrl-btn" data-face="sleep" id="btn-face-sleep">
+                                <span class="btn-dot sleep-dot"></span> Sleep Mode
+                            </button>
+                            <button class="ctrl-btn" data-face="angry" id="btn-face-angry">
+                                <span class="btn-dot angry-dot"></span> Angry / Alert
+                            </button>
+                            <button class="ctrl-btn" data-face="sad" id="btn-face-sad">
+                                <span class="btn-dot sad-dot"></span> Sad / Low Battery
+                            </button>
+                            <button class="ctrl-btn" data-face="guard" id="btn-face-guard">
+                                <span class="btn-dot guard-dot"></span> Guard Mode
+                            </button>
+                        </div>
+                        
+                        <div class="simulation-status-card">
+                            <h4>Device Status Summary</h4>
+                            <p id="simulator-status-text">GEM is happy, connected to WiFi, and tracking ambient desk light.</p>
+                            <div class="telemetry-bar">
+                                <span class="bar-label">Desk Ambient Light (LDR)</span>
+                                <div class="bar-container">
+                                    <div class="bar-fill" id="sim-ldr-fill" style="width: 65%;"></div>
+                                </div>
+                                <span class="bar-value" id="sim-ldr-val">65%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Companion App Showcase Section -->
+        <section id="app" class="app-section">
+            <div class="container app-container">
+                <div class="app-visual">
+                    <div class="app-visual-glow"></div>
+                    <div class="phone-frame">
+                        <div class="phone-slideshow">
+                            <img src="assets/images/gem_app_mockup.png" alt="GEM Companion App Dashboard Mockup" class="app-screenshot active" id="app-slide-0">
+                            <img src="assets/images/gem_app_telemetry.png" alt="GEM App Telemetry" class="app-screenshot" id="app-slide-1">
+                            <img src="assets/images/gem_app_logs.png" alt="GEM App Security Logs" class="app-screenshot" id="app-slide-2">
+                            <img src="assets/images/gem_app_ota.png" alt="GEM App OTA Updater" class="app-screenshot" id="app-slide-3">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="app-details">
+                    <div class="badge badge-accent">Companion Dashboard</div>
+                    <h2 class="app-title">Total Control in <br><span class="gradient-text">Your Pocket</span></h2>
+                    <p class="app-text">
+                        The Flutter-built mobile companion app synchronizes parameters with GEM over your local network and cloud broker pings. Manage settings anywhere in the world.
+                    </p>
+                    
+                    <ul class="app-features-list">
+                        <li class="app-feature-item">
+                            <span class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
+                            <div>
+                                <strong>Real-time Light Telemetry</strong>
+                                <p>Monitor LDR sensor graphs, log values, and track day/night status logs instantly.</p>
+                            </div>
+                        </li>
+                        <li class="app-feature-item">
+                            <span class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
+                            <div>
+                                <strong>Secure Incident Logs</strong>
+                                <p>Get pushed immediate alerts when Guard Mode intercepts movement or flash anomalies.</p>
+                            </div>
+                        </li>
+                        <li class="app-feature-item">
+                            <span class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
+                            <div>
+                                <strong>OTA Firmware Flasher</strong>
+                                <p>Flash the latest firmware update binary directly over the air from the settings pane.</p>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Technical Specifications Section -->
+        <section id="specs" class="specs-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Technical <span class="gradient-text">Specifications</span></h2>
+                    <p class="section-subtitle">Under the hood, GEM combines energy-efficient components with dual-power capability.</p>
+                </div>
+                
+                <div class="specs-grid">
+                    <!-- Spec 1: Power & Battery -->
+                    <div class="spec-card">
+                        <h4>Power & Battery</h4>
+                        <ul>
+                            <li><strong>Capacity:</strong> 600mAh Rechargeable Battery</li>
+                            <li><strong>Backup Time:</strong> 3-4 Hours of active unplugged operation</li>
+                            <li><strong>Charging Port:</strong> USB Type-C fast charging</li>
+                            <li><strong>Charging Time:</strong> 1-2 Hours to fully charge</li>
+                            <li><strong>Power Source:</strong> Supports both USB plug power and battery</li>
+                        </ul>
+                    </div>
+                    
+                    <!-- Spec 2: Hardware & Connectivity -->
+                    <div class="spec-card">
+                        <h4>Hardware & Connectivity</h4>
+                        <ul>
+                            <li><strong>Microcontroller:</strong> ESP32 Dual-Core Processor</li>
+                            <li><strong>WiFi Capability:</strong> 2.4GHz WiFi (802.11 b/g/n)</li>
+                            <li><strong>Update Protocol:</strong> Wireless OTA Firmware Updates</li>
+                            <li><strong>Light Sensor:</strong> Calibrated LDR Ambient Light Sensor</li>
+                            <li><strong>Touch Sensor:</strong> Capacitive Touch Pins</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tutorial Hub Section -->
+        <section id="tutorial" class="tutorial-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">How to Use <span class="gradient-text">GEM Buddy</span></h2>
+                    <p class="section-subtitle">Set up your device, link the mobile app, and customize settings. Watch the setup walkthrough below.</p>
+                </div>
+                
+                <!-- Premium Video Player Container -->
+                <div class="video-container" id="video-tutorial-container">
+                    <div class="video-glow-effect"></div>
+                    <div class="video-mock-frame">
+                        <!-- Initial Overlay Card with Play Button -->
+                        <div class="video-overlay" id="video-play-overlay">
+                            <div class="play-btn-circle" id="play-button-action">
+                                <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            </div>
+                            <h3>Watch Tutorial & Setup Guide</h3>
+                            <p>Learn how to connect Wi-Fi, arm Guard Mode, and configure triggers.</p>
+                        </div>
+                        <!-- Responsive aspect ratio mockup video player -->
+                        <div class="video-player-wrapper">
+                            <!-- Placeholder structure for user to insert iframe easily -->
+                            <div class="placeholder-player-content" id="player-iframe-wrapper">
+                                <div class="player-visual-mock">
+                                    <div class="mock-timeline">
+                                        <div class="timeline-played"></div>
+                                        <div class="timeline-handle"></div>
+                                    </div>
+                                    <div class="mock-controls">
+                                        <div class="mock-left-ctrl">
+                                            <span>▶</span>
+                                            <span>🔊</span>
+                                            <span class="time-label">02:14 / 05:40</span>
+                                        </div>
+                                        <div class="mock-right-ctrl">
+                                            <span>⚙️</span>
+                                            <span>⛶</span>
+                                        </div>
+                                    </div>
+                                    <div class="mock-video-body">
+                                        <div class="spinner"></div>
+                                        <p class="video-loading-text">Loading tutorial stream...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Call-to-action / Pre-order -->
+        <section id="prebook" class="prebook-section">
+            <div class="container">
+                <div class="prebook-card">
+                    <div class="card-glow"></div>
+                    <div class="prebook-content">
+                        <h2>Bring GEM Buddy to Your Desk</h2>
+                        <p class="prebook-notice">
+                            <strong>Pre-bookings and bookings are opening soon!</strong> Sign up with your email to receive an exclusive early bird slot, production updates, and release date announcements.
+                        </p>
+                        
+                        <!-- Notification Signup Form -->
+                        <form class="signup-form" id="booking-form">
+                            <div class="input-group">
+                                <input type="email" id="user-email" placeholder="Enter your email address" required aria-label="Email Address">
+                                <button type="submit" class="btn btn-primary" id="btn-submit-booking">Notify Me</button>
+                            </div>
+                            <p class="form-feedback-message" id="form-feedback"></p>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-container">
+            <div class="footer-info">
+                <div class="footer-logo">
+                    <img src="assets/images/logo.png" alt="GEM Logo" class="logo-img">
+                    <span>GEM BUDDY</span>
+                </div>
+                <p>Interactive Desktop companion robot. Built on ESP32 & Flutter.</p>
+            </div>
+            
+            <div class="footer-links">
+                <h4>Project Links</h4>
+                <ul>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#simulator">Device Simulator</a></li>
+                    <li><a href="#app">Companion App</a></li>
+                    <li><a href="#specs">Technical Specs</a></li>
+                    <li><a href="#tutorial">Tutorial Video</a></li>
+                </ul>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>&copy; 2026 GEM Buddy Project. All rights reserved. Bookings opening soon.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Notification Dialog for pre-booking status -->
+    <div class="modal" id="success-modal">
+        <div class="modal-content">
+            <span class="modal-close" id="modal-close-btn">&times;</span>
+            <div class="success-icon-wrapper">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <h3>Thank you for your interest!</h3>
+            <p>You've successfully subscribed to our early-bird release notifications. We will email you the moment bookings open!</p>
+            <button class="btn btn-primary" id="modal-ok-btn">Awesome</button>
+        </div>
+    </div>
+
+    <!-- Script file -->
+    <script src="app.js"></script>
+</body>
+</html>
