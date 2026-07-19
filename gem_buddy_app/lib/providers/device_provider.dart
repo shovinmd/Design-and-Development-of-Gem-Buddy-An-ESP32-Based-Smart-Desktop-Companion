@@ -608,6 +608,24 @@ class DeviceNotifier extends Notifier<DeviceState> {
     if (lampState != null) params['lampState'] = lampState ? 'true' : 'false';
     if (ledAutoOffMinutes != null) params['ledAutoOffMinutes'] = ledAutoOffMinutes.toString();
 
+    // Auto-sync the cloud webhook URL to the device so it can send security alerts securely
+    final String brokerIp = state.brokerIpAddress.isEmpty
+        ? 'design-and-development-of-gem-buddy-an.onrender.com'
+        : state.brokerIpAddress;
+    String webhookUrl;
+    if (brokerIp.startsWith('http://') || brokerIp.startsWith('https://')) {
+      webhookUrl = brokerIp.endsWith('/') ? '${brokerIp}webhook' : '$brokerIp/webhook';
+    } else {
+      final isLocal = brokerIp.contains('localhost') || 
+                      brokerIp.contains('127.0.0.1') || 
+                      brokerIp.contains('10.0.2.2') || 
+                      brokerIp.startsWith('192.168.') ||
+                      brokerIp.startsWith('10.');
+      final protocol = isLocal ? 'http://' : 'https://';
+      webhookUrl = '$protocol$brokerIp/webhook';
+    }
+    params['webhook'] = webhookUrl;
+
     final prefs = await SharedPreferences.getInstance();
     if (lampMode != null) await prefs.setInt('saved_lampMode', lampMode);
     if (lampBrightness != null) await prefs.setInt('saved_lampBrightness', lampBrightness);

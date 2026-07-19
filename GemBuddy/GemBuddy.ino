@@ -209,6 +209,7 @@ void sendGuardPing() {
   if (pingUrl.startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
+    client.setBufferSizes(1024, 512); // Reduce memory/heap consumption for secure endpoint
     HTTPClient http;
     http.begin(client, pingUrl);
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -332,12 +333,18 @@ void triggerCloudEvent(const char* reason) {
   if (now - rt.lastCloudEvent < CLOUD_EVENT_COOLDOWN_MS) return;
   rt.lastCloudEvent = now;
 
-  String url = String(settings.cloudWebhook);
+  // Derive target webhook URL robustly from settings
+  String webhook = String(settings.cloudWebhook);
+  int lastSlash = webhook.lastIndexOf('/');
+  String base = (lastSlash > 8) ? webhook.substring(0, lastSlash) : webhook;
+  String url = base + "/webhook";
+
   String payload = "{\"device\":\"" + String(settings.deviceName) + "\",\"user\":\"" + String(settings.userName) + "\",\"reason\":\"" + String(reason) + "\",\"ldr\":" + String(rt.ldrRaw) + "}";
 
   if (url.startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
+    client.setBufferSizes(1024, 512); // Reduce heap memory consumption
     HTTPClient http;
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
@@ -370,6 +377,7 @@ void sendGuardToggleEvent(bool active) {
   if (url.startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
+    client.setBufferSizes(1024, 512); // Reduce heap memory consumption
     HTTPClient http;
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
@@ -2258,8 +2266,24 @@ void handleSave() {
   bool oldMon = settings.monitoringEnabled;
   applySettingsFromRequest();
 
-  if (settings.monitoringEnabled && !oldMon) {
-    if (WiFi.status() != WL_CONNECTED) {
+  if (!server.hasArg("epoch")) { // Only sync to broker if toggled from Web UI
+    if (settings.monitoringEnabled && !oldMon) {
+      if (WiFi.status() != WL_CONNECTED) {
+        settings.monitoringEnabled = false;
+        settings.wifiEnabled = false;
+        saveSettings();
+        server.sendHeader("Access-Control-Allow-Origin", "*");
+        server.send(400, "text/plain", "WiFi connection failed. Cannot enable Guard Mode.");
+        return;
+      } else {
+        sendGuardToggleEvent(true);
+      }
+    } else if (!settings.monitoringEnabled && oldMon) {
+      sendGuardToggleEvent(false);
+    }
+  } else {
+    // If it came from the app, just check if connection fails
+    if (settings.monitoringEnabled && !oldMon && WiFi.status() != WL_CONNECTED) {
       settings.monitoringEnabled = false;
       settings.wifiEnabled = false;
       saveSettings();
