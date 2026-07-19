@@ -1085,15 +1085,27 @@ void drawBatteryBar() {
 void drawFaceEyes() {
   int base_x1 = 16;
   int base_x2 = 80;
-  int shift = (rt.picaioXp - 16) / 4; // Scale pupil movement to +/- 4 pixels
+  
+  static float currentXp = 16.0f;
+  float targetXp = rt.picaioXp;
+  
+  // Smoothly interpolate currentXp towards targetXp (Mochi bounce)
+  currentXp += (targetXp - currentXp) * 0.45f;
+  
+  float delta = targetXp - currentXp;
+  int shift = (int)(currentXp - 16.0f) / 4;
   int x1 = base_x1 + rt.picaioXd + shift;
   int x2 = base_x2 + rt.picaioXd + shift;
-
+  
   // Clamp coordinates to prevent side wrap-around glitches
   if (x1 < 0) x1 = 0;
   if (x1 > 48) x1 = 48;
   if (x2 < 48) x2 = 48;
   if (x2 > 96) x2 = 96;
+
+  int y = 8;
+  const unsigned char* frameLeft = nullptr;
+  const unsigned char* frameRight = nullptr;
 
   // Draw the eyes slightly higher (y = 8) to center them better now that clock is gone
   if (rt.wakeAnimStep > 0) {
@@ -1103,21 +1115,52 @@ void drawFaceEyes() {
     else if (rt.wakeAnimStep == 4) frame = eye1;
     u8g2.drawBitmap(x1, 8, 4, 32, frame);
     u8g2.drawBitmap(x2, 8, 4, 32, frame);
-  } else if (rt.isBlinking || rt.picaioMood == 2) {
+  } else if (rt.isBlinking) {
+    uint32_t now = millis();
+    int remaining = (rt.blinkEndMs > now) ? (rt.blinkEndMs - now) : 0;
+    if (remaining > 240) {
+      u8g2.drawBitmap(x1, 9, 4, 32, eye7);
+      u8g2.drawBitmap(x2, 9, 4, 32, eye7);
+    } else if (remaining > 120) {
+      u8g2.drawBitmap(x1, 8, 4, 32, eye0);
+      u8g2.drawBitmap(x2, 8, 4, 32, eye0);
+    } else {
+      u8g2.drawBitmap(x1, 7, 4, 32, eye2);
+      u8g2.drawBitmap(x2, 7, 4, 32, eye2);
+    }
+  } else if (rt.picaioMood == 2) {
     u8g2.drawBitmap(x1, 8, 4, 32, eye0);
     u8g2.drawBitmap(x2, 8, 4, 32, eye0);
   } else {
     int m = rt.picaioMood;
-    if (rt.picaioXp < 6) {
-      u8g2.drawBitmap(x1, 8, 4, 32, peyes[m][1][0]);
-      u8g2.drawBitmap(x2, 8, 4, 32, peyes[m][1][1]);
-    } else if (rt.picaioXp < 26) {
-      u8g2.drawBitmap(x1, 8, 4, 32, peyes[m][0][0]);
-      u8g2.drawBitmap(x2, 8, 4, 32, peyes[m][0][1]);
+    
+    // Check if moving to apply Mochi Squash & Stretch
+    if (abs(delta) > 4.0f) {
+      // Squash down
+      frameLeft = eye7;
+      frameRight = eye7;
+      y = 10;
+    } else if (abs(delta) > 0.5f) {
+      // Stretch up / bounce
+      frameLeft = eye2;
+      frameRight = eye2;
+      y = 7;
     } else {
-      u8g2.drawBitmap(x1, 8, 4, 32, peyes[m][2][0]);
-      u8g2.drawBitmap(x2, 8, 4, 32, peyes[m][2][1]);
+      // Idle mood eyes
+      if (rt.picaioXp < 6) {
+        frameLeft = peyes[m][1][0];
+        frameRight = peyes[m][1][1];
+      } else if (rt.picaioXp < 26) {
+        frameLeft = peyes[m][0][0];
+        frameRight = peyes[m][0][1];
+      } else {
+        frameLeft = peyes[m][2][0];
+        frameRight = peyes[m][2][1];
+      }
+      y = 8;
     }
+    u8g2.drawBitmap(x1, y, 4, 32, frameLeft);
+    u8g2.drawBitmap(x2, y, 4, 32, frameRight);
   }
 }
 
@@ -1562,7 +1605,7 @@ void handleBlinks() {
   } else {
     if (now >= rt.nextBlinkMs && rt.picaioMood != 2) {
       rt.isBlinking = true;
-      rt.blinkEndMs = now + random(100, 200);
+      rt.blinkEndMs = now + 360; // 3 frames (360ms) for Mochi squash-and-stretch blink
     }
   }
 }
