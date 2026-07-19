@@ -177,7 +177,9 @@ app.post('/webhook', (req, res) => {
   // Update device last-seen
   lastSeen.device = Date.now();
 
-  const isSecurityAlert = ['shadow-detected','flash-detected','touch-down','long-touch','touch-detected','alarm','alarm-dismissed'].includes(event);
+  const isSecurityAlert = ['shadow-detected', 'flash-detected', 'touch-down', 'long-touch', 'touch-detected'].includes(event);
+  const isAlarmEvent = ['alarm', 'alarm-dismissed'].includes(event);
+
   const logEntry = {
     timestamp:   new Date().toISOString(),
     event,
@@ -187,21 +189,26 @@ app.post('/webhook', (req, res) => {
     guardActive: guardModeActive,
   };
 
-  if (guardModeActive || isSecurityAlert) addLog(logEntry);
+  const shouldLogAndBroadcast = (isSecurityAlert && guardModeActive) || isAlarmEvent;
 
-  // Broadcast alert to all WebSocket clients (app)
-  const payload = {
-    event:        'alert',
-    reason:       event,
-    device,
-    ldr,
-    guardActive:  guardModeActive,
-    deviceOnline: true,
-    timestamp:    logEntry.timestamp,
-  };
+  if (shouldLogAndBroadcast) {
+    addLog(logEntry);
 
-  const count = broadcast(payload);
-  console.log(`[Broadcast] Sent alert to ${count} client(s).`);
+    // Broadcast alert to all WebSocket clients (app)
+    const payload = {
+      event:        'alert',
+      reason:       event,
+      device,
+      ldr,
+      guardActive:  guardModeActive,
+      deviceOnline: true,
+      timestamp:    logEntry.timestamp,
+    };
+
+    const count = broadcast(payload);
+    console.log(`[Broadcast] Sent alert to ${count} client(s).`);
+  }
+
   res.status(200).send('OK');
 });
 

@@ -1066,6 +1066,14 @@ class DeviceNotifier extends Notifier<DeviceState> {
             if (data['event'] == 'alert') {
               final rawReason = data['reason'] ?? 'Security alert';
               final device = data['device'] ?? 'GEM';
+              final bool guardActive = data['guardActive'] ?? false;
+
+              // Only process actual security alerts if guard mode is active
+              final isSecurityReason = ['shadow-detected', 'flash-detected', 'touch-detected', 'touch-down', 'long-touch'].contains(rawReason);
+              if (isSecurityReason && !guardActive) {
+                fetchSecurityLogs();
+                return;
+              }
               
               String reason = rawReason;
               if (rawReason == 'shadow-detected') {

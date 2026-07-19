@@ -187,7 +187,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     ],
                                   ),
                                   Text(
-                                    'LDR: ${((4095 - deviceState.ldrRaw) / 40.95).toStringAsFixed(0)}%',
+                                    'LDR: ${(deviceState.ldrRaw / 40.95).toStringAsFixed(0)}%',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 11,
@@ -274,7 +274,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 const Text('Light Level', style: TextStyle(color: GemColors.textSecondary, fontSize: 12)),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '${((4095 - deviceState.ldrRaw) / 40.95).toStringAsFixed(0)}%',
+                                  '${(deviceState.ldrRaw / 40.95).toStringAsFixed(0)}%',
                                   style: const TextStyle(color: GemColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
                                 ),
                                 const SizedBox(height: 6),
@@ -282,7 +282,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(2),
                                   child: LinearProgressIndicator(
-                                    value: (4095 - deviceState.ldrRaw) / 4095,
+                                    value: deviceState.ldrRaw / 4095,
                                     backgroundColor: Colors.black.withValues(alpha: 0.05),
                                     valueColor: const AlwaysStoppedAnimation<Color>(GemColors.accentBlue),
                                     minHeight: 4,
