@@ -678,9 +678,15 @@ class DeviceNotifier extends Notifier<DeviceState> {
       return null;
     }
 
+    // When sending Wi-Fi credentials the firmware tests the connection internally
+    // (up to 8 s), so we allow 20 s before giving up.
+    final bool isWifiProvisioning = wifiSsid != null && wifiSsid.isNotEmpty;
+    final Duration requestTimeout =
+        isWifiProvisioning ? const Duration(seconds: 20) : const Duration(seconds: 10);
+
     try {
       final uri = Uri.http(state.ipAddress, '/api/save', params);
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      final response = await http.get(uri).timeout(requestTimeout);
       
       if (response.statusCode == 200) {
         state = state.copyWith(
@@ -708,8 +714,26 @@ class DeviceNotifier extends Notifier<DeviceState> {
       } else {
         return response.body;
       }
+    } on TimeoutException {
+      // During Wi-Fi provisioning the ESP32 may drop the connection while it
+      // reconnects to the new network — treat that as a successful save.
+      if (isWifiProvisioning) {
+        if (kDebugMode) print('[saveSettings] Timeout during Wi-Fi provisioning — treating as success.');
+        state = state.copyWith(
+          wifiEnabled: wifiEnabled ?? state.wifiEnabled,
+          hotspotTimeoutMinutes: hotspotTimeoutMinutes ?? state.hotspotTimeoutMinutes,
+          setupComplete: true,
+        );
+        ref.read(timelineProvider.notifier).addLog(
+          type: 'system',
+          title: 'Wi-Fi Provisioned',
+          message: 'Settings saved. GEM is reconnecting to the new network.',
+        );
+        return null; // null = success
+      }
+      return 'Request timed out. Make sure the app and device are on the same network.';
     } catch (e) {
-      if (kDebugMode) print("Save failed: $e");
+      if (kDebugMode) print('Save failed: $e');
       return e.toString();
     }
   }
