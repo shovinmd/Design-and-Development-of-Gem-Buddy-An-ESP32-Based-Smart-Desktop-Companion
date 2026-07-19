@@ -13,9 +13,21 @@ let admin = null;
 try {
   admin = require('firebase-admin');
   const serviceAccountEnv = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const pathRenderSecret = '/etc/secrets/service-account.json';
+  const pathRenderSecretCustom = '/etc/secrets/FIREBASE_SERVICE_ACCOUNT';
   const pathLocal = path.join(__dirname, 'service-account.json');
   const pathRoot = path.join(__dirname, '..', 'service-account.json');
-  const serviceAccountPath = fs.existsSync(pathLocal) ? pathLocal : pathRoot;
+
+  let serviceAccountPath = null;
+  if (fs.existsSync(pathRenderSecret)) {
+    serviceAccountPath = pathRenderSecret;
+  } else if (fs.existsSync(pathRenderSecretCustom)) {
+    serviceAccountPath = pathRenderSecretCustom;
+  } else if (fs.existsSync(pathLocal)) {
+    serviceAccountPath = pathLocal;
+  } else if (fs.existsSync(pathRoot)) {
+    serviceAccountPath = pathRoot;
+  }
 
   if (serviceAccountEnv) {
     const serviceAccount = JSON.parse(serviceAccountEnv);
@@ -23,12 +35,12 @@ try {
       credential: admin.credential.cert(serviceAccount)
     });
     console.log('[FCM] Firebase Admin SDK initialized successfully via Environment Variable.');
-  } else if (fs.existsSync(serviceAccountPath)) {
+  } else if (serviceAccountPath) {
     const serviceAccount = require(serviceAccountPath);
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
-    console.log('[FCM] Firebase Admin SDK initialized successfully via service-account.json.');
+    console.log(`[FCM] Firebase Admin SDK initialized successfully via ${serviceAccountPath}.`);
   } else {
     console.log('[FCM] Service account credentials not found. Push notifications will be skipped.');
     admin = null;
