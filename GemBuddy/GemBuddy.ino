@@ -1615,21 +1615,7 @@ void updateFaceAnimation() {
   if (now - rt.lastFaceFrame < OLED_REFRESH_MS) return;
   rt.lastFaceFrame = now;
 
-  static uint32_t configuringEndMs = 0;
-  if (rt.faceMode == FACE_CONFIGURING) {
-    if (configuringEndMs == 0) {
-      configuringEndMs = now + 2500; // Show configuring screen for 2.5 seconds
-    }
-    if (now >= configuringEndMs) {
-      rt.faceMode = FACE_DAY;
-      configuringEndMs = 0;
-    }
-    return;
-  } else {
-    configuringEndMs = 0;
-  }
-
-  if (rt.welcomeActive) {
+  if (rt.welcomeActive || rt.faceMode == FACE_CONFIGURING) {
     return;
   }
 
@@ -2314,40 +2300,6 @@ void applySettingsFromRequest() {
 void handleSave() {
   rt.lastAppRequestAt = millis();
 
-  // Show configuring screen on the device while saving settings
-  rt.faceMode = FACE_CONFIGURING;
-  rt.welcomeActive = false;
-  rt.lastOledUpdate = 0; // Force immediate redraw
-  renderScreen();
-
-  // If wifiSsid is provided, validate the credentials by testing connection
-  if (server.hasArg("wifiSsid")) {
-    String testSsid = server.arg("wifiSsid");
-    String testPass = server.hasArg("wifiPass") ? server.arg("wifiPass") : "";
-    if (testSsid.length() > 0) {
-      Serial.printf("Testing Wi-Fi connection to SSID: %s...\n", testSsid.c_str());
-      WiFi.begin(testSsid.c_str(), testPass.c_str());
-      uint32_t start = millis();
-      bool connected = false;
-      while (millis() - start < 8000) {
-        if (WiFi.status() == WL_CONNECTED) {
-          connected = true;
-          break;
-        }
-        delay(150);
-      }
-      if (!connected) {
-        Serial.println("Test Wi-Fi Connection Failed!");
-        WiFi.disconnect(true);
-        server.sendHeader("Access-Control-Allow-Origin", "*");
-        server.send(400, "text/plain", "WiFi connection failed. Please check credentials.");
-        return;
-      }
-      Serial.println("Test Wi-Fi Connection Successful!");
-      WiFi.disconnect(true); // disconnect test, will reconnect when needed
-    }
-  }
-
   bool oldMon = settings.monitoringEnabled;
   applySettingsFromRequest();
 
@@ -2389,9 +2341,10 @@ void handleSave() {
 
   server.sendHeader("Access-Control-Allow-Origin", "*");
   if (needsReboot) {
+    // Only show configuring screen when actually rebooting
     rt.faceMode = FACE_CONFIGURING;
     rt.welcomeActive = false;
-    rt.lastOledUpdate = 0; // Force immediate redraw
+    rt.lastOledUpdate = 0;
     renderScreen();
 
     String response = "<html><body>Saved to flash. Rebooting... <a href='/'>Back</a></body></html>";

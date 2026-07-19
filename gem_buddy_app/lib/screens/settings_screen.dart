@@ -852,19 +852,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       deviceNotifier.updateIpAddress(_ipController.text.trim());
     }
 
-    // Save WiFi locally
+    // Save WiFi locally to app prefs only (not sent to device here)
     final prefs = await SharedPreferences.getInstance();
     if (_ssidController.text.trim().isNotEmpty) {
       await prefs.setString('saved_wifi_ssid', _ssidController.text.trim());
       await prefs.setString('saved_wifi_pass', _passController.text.trim());
     }
 
-    // Save to device provider & sync with ESP32
+    // Sync only profile fields to the device — no wifiSsid/wifiPass here,
+    // those are handled exclusively by the "Connect ESP32 to Wi-Fi" button.
     final error = await deviceNotifier.saveSettings(
       userName: _nameController.text.trim(),
       deviceName: _nicknameController.text.trim(),
-      wifiSsid: _ssidController.text.trim().isNotEmpty ? _ssidController.text.trim() : null,
-      wifiPass: _passController.text.trim().isNotEmpty ? _passController.text.trim() : null,
       timezoneLabel: tzMatch['label'] as String,
       timezoneOffsetMinutes: tzMatch['offset'] as int,
     );
