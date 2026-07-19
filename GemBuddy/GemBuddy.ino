@@ -193,7 +193,6 @@ bool argTrue(const String& value) {
 // POST a lightweight keepalive ping to the broker's /api/ping endpoint.
 // Called every 30 s when monitoring is enabled and Wi-Fi is up.
 void sendGuardPing() {
-  if (!settings.monitoringEnabled) return;
   if (WiFi.status() != WL_CONNECTED) return;
   if (strlen(settings.cloudWebhook) < 8) return;
 
@@ -1208,9 +1207,9 @@ void drawInfoScreen() {
   u8g2.drawStr(10, 22, "Creator:");
   u8g2.drawStr(55, 22, "Shovin");
   u8g2.drawStr(10, 30, "Version:");
-  u8g2.drawStr(55, 30, "1.3");
+  u8g2.drawStr(55, 30, "1.4");
   u8g2.drawStr(10, 38, "Build:");
-  u8g2.drawStr(55, 38, "Jul 18 2026");
+  u8g2.drawStr(55, 38, "Jul 19 2026");
   u8g2.drawStr(10, 46, "Time:");
   u8g2.drawStr(55, 46, timeBuf);
   u8g2.drawStr(10, 54, "Date:");
@@ -2701,8 +2700,8 @@ void loop() {
     saveLastKnownTime();
   }
 
-  // Guard-mode keepalive ping to broker every 30 seconds
-  if (settings.monitoringEnabled && millis() - rt.lastGuardPingMs >= 30000UL) {
+  // Keepalive ping to broker every 30 seconds (if connected to WiFi)
+  if (WiFi.status() == WL_CONNECTED && millis() - rt.lastGuardPingMs >= 30000UL) {
     rt.lastGuardPingMs = millis();
     sendGuardPing();
   }

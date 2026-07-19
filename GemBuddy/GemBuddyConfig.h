@@ -43,7 +43,7 @@ constexpr uint32_t HEART_SAMPLE_MS = 12;
 constexpr uint32_t TAP_WINDOW_MS = 420;
 constexpr uint32_t LONG_TOUCH_MS = 900;
 constexpr uint32_t ALARM_CHECK_MS = 1000;
-constexpr uint32_t CLOUD_EVENT_COOLDOWN_MS = 60000;
+constexpr uint32_t CLOUD_EVENT_COOLDOWN_MS = 5000;
 constexpr uint32_t HEART_MODE_TIMEOUT_MS = 30000;
 
 // ---------------- OLED / Face ----------------
