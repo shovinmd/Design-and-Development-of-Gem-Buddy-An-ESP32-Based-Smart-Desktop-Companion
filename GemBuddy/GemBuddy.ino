@@ -1615,7 +1615,21 @@ void updateFaceAnimation() {
   if (now - rt.lastFaceFrame < OLED_REFRESH_MS) return;
   rt.lastFaceFrame = now;
 
-  if (rt.welcomeActive || rt.faceMode == FACE_CONFIGURING) {
+  static uint32_t configuringEndMs = 0;
+  if (rt.faceMode == FACE_CONFIGURING) {
+    if (configuringEndMs == 0) {
+      configuringEndMs = now + 2500; // Show configuring screen for 2.5 seconds
+    }
+    if (now >= configuringEndMs) {
+      rt.faceMode = FACE_DAY;
+      configuringEndMs = 0;
+    }
+    return;
+  } else {
+    configuringEndMs = 0;
+  }
+
+  if (rt.welcomeActive) {
     return;
   }
 
@@ -2299,6 +2313,12 @@ void applySettingsFromRequest() {
 
 void handleSave() {
   rt.lastAppRequestAt = millis();
+
+  // Show configuring screen on the device while saving settings
+  rt.faceMode = FACE_CONFIGURING;
+  rt.welcomeActive = false;
+  rt.lastOledUpdate = 0; // Force immediate redraw
+  renderScreen();
 
   // If wifiSsid is provided, validate the credentials by testing connection
   if (server.hasArg("wifiSsid")) {
