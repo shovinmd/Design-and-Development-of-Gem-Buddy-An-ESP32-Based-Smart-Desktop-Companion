@@ -94,65 +94,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 3. Tutorial Video Player Mockup Simulation
+    // 3. Tutorial Video Player (Embed YouTube on Play Click)
     const playOverlay = document.getElementById('video-play-overlay');
-    const timelinePlayed = document.querySelector('.timeline-played');
-    const timelineHandle = document.querySelector('.timeline-handle');
-    const timeLabel = document.querySelector('.time-label');
-    const playButtonAction = document.getElementById('play-button-action');
-
-    let videoInterval = null;
-
-    const startMockVideoTimeline = () => {
-        if (videoInterval) clearInterval(videoInterval);
-        
-        let percentage = 40;
-        let seconds = 134; // 2:14 out of 5:40 (340 seconds total)
-        const totalSeconds = 340;
-
-        videoInterval = setInterval(() => {
-            seconds++;
-            if (seconds >= totalSeconds) {
-                seconds = 0;
-            }
-            percentage = (seconds / totalSeconds) * 100;
-            
-            // Update UI elements
-            if (timelinePlayed) timelinePlayed.style.width = `${percentage}%`;
-            if (timelineHandle) timelineHandle.style.left = `${percentage}%`;
-            
-            const curMin = Math.floor(seconds / 60);
-            const curSec = Math.floor(seconds % 60).toString().padStart(2, '0');
-            const totMin = Math.floor(totalSeconds / 60);
-            const totSec = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
-            
-            if (timeLabel) {
-                timeLabel.textContent = `${curMin}:${curSec} / ${totMin}:${totSec}`;
-            }
-        }, 1000);
-    };
-
     if (playOverlay) {
-        // Support overlay click to trigger mock video playing
         playOverlay.addEventListener('click', () => {
             playOverlay.style.opacity = '0';
             setTimeout(() => {
                 playOverlay.style.display = 'none';
             }, 350);
 
-            // Change loader text to streaming status
-            const loadingText = document.querySelector('.video-loading-text');
-            if (loadingText) {
-                loadingText.textContent = 'Streaming Setup Walkthrough... (YouTube Video Placeholder)';
+            const iframeWrapper = document.getElementById('player-iframe-wrapper');
+            if (iframeWrapper) {
+                iframeWrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/EwBLpG_TGUQ?autoplay=1&rel=0" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 20px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
             }
-            
-            const spinner = document.querySelector('.spinner');
-            if (spinner) {
-                spinner.style.borderTopColor = '#10b981'; // Green active playing state spinner
-            }
-
-            // Animate timeline
-            startMockVideoTimeline();
         });
     }
 
