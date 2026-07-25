@@ -48,13 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showSleep: true,
             showGuard: false
         },
-        angry: {
-            img: 'assets/images/gem_angry.jpg',
-            status: 'Alert! Sensor fluctuation or sudden shadow registered in the log.',
-            ldr: 30,
-            showSleep: false,
-            showGuard: false
-        },
         sad: {
             img: 'assets/images/gem_sad.jpg',
             status: 'Low battery warning or device disconnected. Checking backup state.',
