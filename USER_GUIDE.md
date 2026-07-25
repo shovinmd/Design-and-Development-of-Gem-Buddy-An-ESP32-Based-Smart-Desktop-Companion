@@ -1,4 +1,4 @@
-# GEM Buddy — User & Connection Guide (v1.8)
+# GEM Buddy — User & Connection Guide (v2.0)
 
 Welcome to your smart desktop companion! GEM Buddy is designed to keep your desk secure, connected, and smarter every day.
 
