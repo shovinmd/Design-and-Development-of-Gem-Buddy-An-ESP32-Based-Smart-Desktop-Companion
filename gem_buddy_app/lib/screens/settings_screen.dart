@@ -491,7 +491,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 const Text('Device Version', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
                                 Text(
                                   deviceState.isSimulated 
-                                      ? '1.8 (Simulated)' 
+                                      ? '2.0 (Simulated)' 
                                       : (deviceState.firmwareVersion.isEmpty ? 'Unknown' : deviceState.firmwareVersion), 
                                   style: const TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)
                                 ),
@@ -502,7 +502,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('Available Update', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
-                                Text('1.8', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                                Text('2.0', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -510,7 +510,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('Release Date', style: TextStyle(color: GemColors.textSecondary, fontSize: 13)),
-                                Text('July 19, 2026', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                                Text('July 25, 2026', style: TextStyle(color: GemColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ],
@@ -590,14 +590,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    final bool isUpToDate = deviceState.firmwareVersion == '1.8';
+    final bool isUpToDate = deviceState.firmwareVersion == '2.0';
     String titleText = 'Update Device?';
     String messageText = 'Do you want to flash the update? The GEM device will reboot automatically once completed.';
     String confirmButtonText = 'Update';
 
     if (isUpToDate) {
       titleText = 'Device Up to Date';
-      messageText = 'Your GEM device is already running the latest firmware version (1.8). Do you still want to re-flash and override it?';
+      messageText = 'Your GEM device is already running the latest firmware version (2.0). Do you still want to re-flash and override it?';
       confirmButtonText = 'Override';
     }
 
