@@ -191,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         {
             title: "4. Device Controller",
-            desc: "Turn the ambient lamp on/off, adjust light brightness, change LED modes, and configure sleep timers."
+            desc: "Turn the ambient lamp on/off, adjust light brightness, change LED modes, and set alarms."
         },
         {
             title: "5. Desk Guard Sentinel",
