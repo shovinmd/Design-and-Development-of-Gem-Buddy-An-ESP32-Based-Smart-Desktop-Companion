@@ -13,7 +13,7 @@ class UserSettings {
   final bool setupComplete;
 
   UserSettings({
-    this.userName = 'Shovin',
+    this.userName = '',
     this.avatarIndex = 0,
     this.greetingStyle = 'Standard',
     this.deviceNickname = 'GEM',
@@ -62,7 +62,7 @@ class SettingsNotifier extends Notifier<UserSettings> {
   Future<void> _initStorage() async {
     _prefs = await SharedPreferences.getInstance();
     state = UserSettings(
-      userName: _prefs?.getString('${_prefix}userName') ?? 'Shovin',
+      userName: _prefs?.getString('${_prefix}userName') ?? '',
       avatarIndex: _prefs?.getInt('${_prefix}avatarIndex') ?? 0,
       greetingStyle: _prefs?.getString('${_prefix}greetingStyle') ?? 'Standard',
       deviceNickname: _prefs?.getString('${_prefix}deviceNickname') ?? 'GEM',

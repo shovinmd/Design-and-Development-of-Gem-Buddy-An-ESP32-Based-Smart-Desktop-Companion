@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/colors.dart';
 import '../theme/glass_styles.dart';
 import '../widgets/glass_card.dart';
@@ -15,13 +16,37 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'Shovin');
+  final _nameController = TextEditingController(text: '');
   final _nicknameController = TextEditingController(text: 'GEM');
   final _wifiSsidController = TextEditingController();
   final _wifiPassController = TextEditingController();
   
   String _selectedTimezone = 'Asia/Kolkata';
   int _hotspotTimeout = 20;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill name and nickname from saved state if any
+    final userSettings = ref.read(settingsProvider);
+    _nameController.text = userSettings.userName;
+    if (userSettings.deviceNickname.isNotEmpty) {
+      _nicknameController.text = userSettings.deviceNickname;
+    }
+    _loadWifiSettings();
+  }
+
+  Future<void> _loadWifiSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _wifiSsidController.text = prefs.getString('saved_wifi_ssid') ?? '';
+        _wifiPassController.text = prefs.getString('saved_wifi_pass') ?? '';
+        _hotspotTimeout = prefs.getInt('saved_hotspotTimeoutMinutes') ?? 20;
+      });
+    }
+  }
+
   final List<Map<String, dynamic>> _timezones = [
     {'label': 'Asia/Kolkata', 'offset': 330},
     {'label': 'UTC', 'offset': 0},
@@ -98,6 +123,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     await settingsNotifier.updateUserName(_nameController.text.trim());
     await settingsNotifier.updateDeviceNickname(_nicknameController.text.trim());
     await settingsNotifier.updateSetupComplete(true);
+
+    final prefs = await SharedPreferences.getInstance();
+    if (_wifiSsidController.text.trim().isNotEmpty) {
+      await prefs.setString('saved_wifi_ssid', _wifiSsidController.text.trim());
+      await prefs.setString('saved_wifi_pass', _wifiPassController.text.trim());
+      await prefs.setInt('saved_hotspotTimeoutMinutes', _hotspotTimeout);
+    }
 
     // Find selected offset
     final tzMatch = _timezones.firstWhere((tz) => tz['label'] == _selectedTimezone);
