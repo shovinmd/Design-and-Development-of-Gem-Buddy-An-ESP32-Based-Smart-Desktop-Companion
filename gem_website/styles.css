@@ -349,12 +349,29 @@ body {
     max-width: 450px;
     height: auto;
     object-fit: contain;
-    animation: floatImage 6s infinite ease-in-out alternate;
+    border-radius: 24px;
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    animation: floatImage 6s infinite ease-in-out alternate, borderGlow 6s infinite alternate ease-in-out;
 }
 
 @keyframes floatImage {
     0% { transform: translateY(0px) rotate(0deg); }
-    100% { transform: translateY(-15px) rotate(1deg); }
+    100% { transform: translateY(-15px) rotate(1.5deg); }
+}
+
+@keyframes borderGlow {
+    0% {
+        box-shadow: 0 0 15px rgba(0, 242, 254, 0.25), 0 0 30px rgba(0, 242, 254, 0.15);
+        border-color: rgba(0, 242, 254, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(142, 45, 226, 0.4), 0 0 50px rgba(142, 45, 226, 0.2);
+        border-color: rgba(142, 45, 226, 0.4);
+    }
+    100% {
+        box-shadow: 0 0 15px rgba(0, 242, 254, 0.25), 0 0 30px rgba(0, 242, 254, 0.15);
+        border-color: rgba(0, 242, 254, 0.3);
+    }
 }
 
 /* ==========================================================================
