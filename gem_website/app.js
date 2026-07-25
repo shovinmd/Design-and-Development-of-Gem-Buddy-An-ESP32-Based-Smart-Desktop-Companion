@@ -124,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 6. Interactive mobile app showcase carousel
     const carouselTrack = document.getElementById('phone-carousel-track');
+    const carouselViewport = document.querySelector('.phone-carousel-viewport');
     const prevBtn = document.getElementById('app-carousel-prev');
     const nextBtn = document.getElementById('app-carousel-next');
     const dotsContainer = document.getElementById('app-carousel-dots');
