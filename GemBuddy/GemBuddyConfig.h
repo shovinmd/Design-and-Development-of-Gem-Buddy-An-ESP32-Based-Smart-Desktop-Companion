@@ -53,6 +53,9 @@ constexpr uint8_t OLED_CONTRAST_DAY = 255;
 constexpr uint8_t OLED_CONTRAST_EVENING = 120;
 constexpr uint8_t OLED_CONTRAST_NIGHT = 35;
 
+// ---------------- LDR Sensor ----------------
+constexpr uint16_t LDR_DARK_THRESHOLD = 150; // Requires a darker room to trigger sleep mode (decreased from 500 to prevent daytime sleeping)
+
 // ---------------- Battery ----------------
 constexpr float BATTERY_MIN_VOLTAGE = 3.20f;
 constexpr float BATTERY_MAX_VOLTAGE = 4.20f;

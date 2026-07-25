@@ -576,7 +576,7 @@ void refreshSensors(bool force = false) {
     bool wasDark = rt.ambientDark;
     rt.lastLdrRead = now;
     rt.ldrRaw = readLdrRaw();
-    rt.ambientDark = rt.ldrRaw < 500;
+    rt.ambientDark = rt.ldrRaw < LDR_DARK_THRESHOLD;
 
     if (!force) {
       if (!wasDark && rt.ambientDark) {
