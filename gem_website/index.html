@@ -211,46 +211,43 @@
             <div class="container app-container">
                 <div class="app-visual">
                     <div class="app-visual-glow"></div>
-                    <div class="phone-frame">
-                        <div class="phone-slideshow">
-                            <img src="assets/images/gem_app_mockup.png" alt="GEM Companion App Dashboard Mockup" class="app-screenshot active" id="app-slide-0">
-                            <img src="assets/images/gem_app_telemetry.png" alt="GEM App Telemetry" class="app-screenshot" id="app-slide-1">
-                            <img src="assets/images/gem_app_logs.png" alt="GEM App Security Logs" class="app-screenshot" id="app-slide-2">
-                            <img src="assets/images/gem_app_ota.png" alt="GEM App OTA Updater" class="app-screenshot" id="app-slide-3">
+                    <div class="phone-frame-wrapper">
+                        <button class="carousel-control prev" id="app-carousel-prev" aria-label="Previous Slide">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 20px; height: 20px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                        </button>
+                        <div class="phone-frame">
+                            <div class="phone-slideshow" id="phone-slideshow">
+                                <img src="assets/images/intro.jpg" alt="Onboarding Intro Screen" class="app-screenshot">
+                                <img src="assets/images/Setup screen.jpg" alt="Wi-Fi Setup Screen" class="app-screenshot">
+                                <img src="assets/images/home screen.jpg" alt="Home Dashboard Screen" class="app-screenshot">
+                                <img src="assets/images/control panel.jpg" alt="Device Control Panel Screen" class="app-screenshot">
+                                <img src="assets/images/Desk Security screen.jpg" alt="Desk Security Sentinel Screen" class="app-screenshot">
+                                <img src="assets/images/History screen.jpg" alt="Security Log History Screen" class="app-screenshot">
+                                <img src="assets/images/Update.jpg" alt="OTA Firmware Update Screen" class="app-screenshot">
+                                <img src="assets/images/Settings.jpg" alt="Device Settings Screen" class="app-screenshot">
+                                <img src="assets/images/Device Guid screen.jpg" alt="Device Guide Screen" class="app-screenshot">
+                            </div>
                         </div>
+                        <button class="carousel-control next" id="app-carousel-next" aria-label="Next Slide">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 20px; height: 20px;"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                        </button>
                     </div>
+                    <!-- Dots pagination -->
+                    <div class="carousel-dots" id="app-carousel-dots"></div>
                 </div>
                 
                 <div class="app-details">
                     <div class="badge badge-accent">Companion Dashboard</div>
                     <h2 class="app-title">Total Control in <br><span class="gradient-text">Your Pocket</span></h2>
-                    <p class="app-text">
+                    <p class="app-text" style="margin-bottom: 20px;">
                         The Flutter-built mobile companion app synchronizes parameters with GEM over your local network and cloud broker pings. Manage settings anywhere in the world.
                     </p>
                     
-                    <ul class="app-features-list">
-                        <li class="app-feature-item">
-                            <span class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
-                            <div>
-                                <strong>Real-time Light Telemetry</strong>
-                                <p>Monitor LDR sensor graphs, log values, and track day/night status logs instantly.</p>
-                            </div>
-                        </li>
-                        <li class="app-feature-item">
-                            <span class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
-                            <div>
-                                <strong>Secure Incident Logs</strong>
-                                <p>Get pushed immediate alerts when Guard Mode intercepts movement or flash anomalies.</p>
-                            </div>
-                        </li>
-                        <li class="app-feature-item">
-                            <span class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
-                            <div>
-                                <strong>OTA Firmware Flasher</strong>
-                                <p>Flash the latest firmware update binary directly over the air from the settings pane.</p>
-                            </div>
-                        </li>
-                    </ul>
+                    <!-- Dynamic Walkthrough Caption Card -->
+                    <div class="app-showcase-caption" id="app-showcase-caption">
+                        <h4 id="carousel-slide-title">1. Welcome & Onboarding</h4>
+                        <p id="carousel-slide-desc">Meet your GEM companion app. Get a brief introduction to what your desktop assistant can do.</p>
+                    </div>
                 </div>
             </div>
         </section>

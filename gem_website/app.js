@@ -168,24 +168,139 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 6. Automatic mobile app showcase slideshow
-    let currentSlide = 0;
-    const slides = [
-        document.getElementById('app-slide-0'),
-        document.getElementById('app-slide-1'),
-        document.getElementById('app-slide-2'),
-        document.getElementById('app-slide-3')
+    // 6. Interactive mobile app showcase carousel
+    const carouselTrack = document.getElementById('phone-slideshow');
+    const prevBtn = document.getElementById('app-carousel-prev');
+    const nextBtn = document.getElementById('app-carousel-next');
+    const dotsContainer = document.getElementById('app-carousel-dots');
+    const captionTitle = document.getElementById('carousel-slide-title');
+    const captionDesc = document.getElementById('carousel-slide-desc');
+
+    const appScreens = [
+        {
+            title: "1. Welcome & Onboarding",
+            desc: "Meet your GEM companion app. Get a brief introduction to what your desktop assistant can do."
+        },
+        {
+            title: "2. Wi-Fi Provisioning",
+            desc: "Quickly set up your GEM device. Enter your Wi-Fi credentials to link your phone and the companion device."
+        },
+        {
+            title: "3. Interactive Face Panel",
+            desc: "Pet your GEM companion, customize eye styles, toggle features, and monitor your device status in real-time."
+        },
+        {
+            title: "4. Device Controller",
+            desc: "Turn the ambient lamp on/off, adjust light brightness, change LED modes, and configure sleep timers."
+        },
+        {
+            title: "5. Desk Guard Sentinel",
+            desc: "Arm GEM to monitor your desk. Activate light trigger alerts, movement tracking, and physical touch alarms."
+        },
+        {
+            title: "6. Incident Logs",
+            desc: "View real-time security telemetry. Check logs, timestamps, and detail cards for past security alerts."
+        },
+        {
+            title: "7. Over-the-Air Updates",
+            desc: "Scan and wirelessly flash the latest firmware binary straight to your ESP32 device from your phone."
+        },
+        {
+            title: "8. Preferences & Config",
+            desc: "Configure timezone details, set custom nicknames, and toggle hardware parameters for your companion."
+        },
+        {
+            title: "9. Integrated Help Guide",
+            desc: "Access instructions, status LED keys, safety guidelines, and troubleshooting tips inside the app."
+        }
     ];
 
-    if (slides[0]) {
-        setInterval(() => {
-            if (slides[currentSlide]) {
-                slides[currentSlide].classList.remove('active');
+    let currentSlideIndex = 0;
+    let autoSlideInterval = null;
+
+    if (carouselTrack) {
+        // Generate dot elements
+        appScreens.forEach((_, idx) => {
+            const dot = document.createElement('div');
+            dot.classList.add('carousel-dot');
+            if (idx === 0) dot.classList.add('active');
+            dot.addEventListener('click', () => {
+                goToSlide(idx);
+                resetAutoSlide();
+            });
+            dotsContainer.appendChild(dot);
+        });
+
+        const dots = document.querySelectorAll('.carousel-dot');
+
+        function goToSlide(index) {
+            currentSlideIndex = index;
+            // Slide transition
+            carouselTrack.style.transform = `translateX(-${currentSlideIndex * 100}%)`;
+            
+            // Update dots
+            dots.forEach((dot, idx) => {
+                if (idx === currentSlideIndex) {
+                    dot.classList.add('active');
+                } else {
+                    dot.classList.remove('active');
+                }
+            });
+
+            // Update captions
+            if (captionTitle && captionDesc) {
+                // Fade out caption slightly, change contents, fade back in
+                captionTitle.style.opacity = 0;
+                captionDesc.style.opacity = 0;
+                setTimeout(() => {
+                    captionTitle.textContent = appScreens[currentSlideIndex].title;
+                    captionDesc.textContent = appScreens[currentSlideIndex].desc;
+                    captionTitle.style.opacity = 1;
+                    captionDesc.style.opacity = 1;
+                }, 150);
             }
-            currentSlide = (currentSlide + 1) % slides.length;
-            if (slides[currentSlide]) {
-                slides[currentSlide].classList.add('active');
-            }
-        }, 3500);
+        }
+
+        function nextSlide() {
+            let nextIdx = (currentSlideIndex + 1) % appScreens.length;
+            goToSlide(nextIdx);
+        }
+
+        function prevSlide() {
+            let prevIdx = (currentSlideIndex - 1 + appScreens.length) % appScreens.length;
+            goToSlide(prevIdx);
+        }
+
+        // Add button event listeners
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                prevSlide();
+                resetAutoSlide();
+            });
+        }
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                nextSlide();
+                resetAutoSlide();
+            });
+        }
+
+        // Auto slide management
+        function startAutoSlide() {
+            autoSlideInterval = setInterval(nextSlide, 4500);
+        }
+
+        function resetAutoSlide() {
+            clearInterval(autoSlideInterval);
+            startAutoSlide();
+        }
+
+        // Initialize transition effects on captions
+        if (captionTitle && captionDesc) {
+            captionTitle.style.transition = 'opacity 0.25s ease';
+            captionDesc.style.transition = 'opacity 0.25s ease';
+        }
+
+        startAutoSlide();
     }
 });
