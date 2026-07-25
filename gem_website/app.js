@@ -170,59 +170,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 4. Prebook Notify Signup Form & Modal popup
-    const bookingForm = document.getElementById('booking-form');
-    const userEmail = document.getElementById('user-email');
-    const submitBtn = document.getElementById('btn-submit-booking');
-    const formFeedback = document.getElementById('form-feedback');
-    const successModal = document.getElementById('success-modal');
-    const modalClose = document.getElementById('modal-close-btn');
-    const modalOk = document.getElementById('modal-ok-btn');
-
-    if (bookingForm) {
-        bookingForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-
-            const emailValue = userEmail.value.trim();
-            if (!emailValue) return;
-
-            // Simple visual loader feedback
-            submitBtn.textContent = 'Subscribing...';
-            submitBtn.disabled = true;
-
-            setTimeout(() => {
-                // Restore button
-                submitBtn.textContent = 'Notify Me';
-                submitBtn.disabled = false;
-                
-                // Open visual popup modal
-                if (successModal) {
-                    successModal.style.display = 'flex';
-                }
-                
-                // Reset input
-                userEmail.value = '';
-            }, 1000);
-        });
-    }
-
-    // Modal dismiss logic
-    const closeModal = () => {
-        if (successModal) {
-            successModal.style.display = 'none';
-        }
-    };
-
-    if (modalClose) modalClose.addEventListener('click', closeModal);
-    if (modalOk) modalOk.addEventListener('click', closeModal);
-    
-    // Dismiss on clicking outside content
-    window.addEventListener('click', (e) => {
-        if (e.target === successModal) {
-            closeModal();
-        }
-    });
-
     // 5. Trackpad feature card spotlight effect (ambient background hover follow)
     const cards = document.querySelectorAll('.feature-card');
     cards.forEach(card => {

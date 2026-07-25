@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Meet GEM (Gem Buddy) - The ultimate interactive desktop companion robot and project featuring security guard modes, custom OLED face animations, telemetry, and a Flutter companion app.">
     <title>GEM (Gem Buddy) — Premium Interactive Desktop Companion Robot</title>
+    <link rel="icon" type="image/png" href="assets/images/logo.png">
     
     <!-- Open Graph / Facebook / LinkedIn -->
     <meta property="og:type" content="website">
@@ -46,7 +47,7 @@
                     <li><a href="#app" class="nav-link">Companion App</a></li>
                     <li><a href="#specs" class="nav-link">Specs</a></li>
                     <li><a href="#tutorial" class="nav-link">Tutorial</a></li>
-                    <li><a href="#prebook" class="nav-btn">Notify Me</a></li>
+                    <li><a href="#download" class="nav-btn">Download</a></li>
                 </ul>
             </nav>
             
@@ -73,7 +74,7 @@
                             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                             Watch Tutorial
                         </a>
-                        <a href="#prebook" class="btn btn-secondary" id="hero-book-btn">Get notified when booking starts</a>
+                        <a href="#download" class="btn btn-secondary" id="hero-book-btn">Download Companion App</a>
                     </div>
                 </div>
                 
@@ -348,25 +349,22 @@
             </div>
         </section>
 
-        <!-- Call-to-action / Pre-order -->
-        <section id="prebook" class="prebook-section">
+        <!-- Call-to-action / Download -->
+        <section id="download" class="prebook-section">
             <div class="container">
                 <div class="prebook-card">
                     <div class="card-glow"></div>
                     <div class="prebook-content">
-                        <h2>Bring GEM Buddy to Your Desk</h2>
+                        <h2>Download Companion App</h2>
                         <p class="prebook-notice">
-                            <strong>Pre-bookings and bookings are opening soon!</strong> Sign up with your email to receive an exclusive early bird slot, production updates, and release date announcements.
+                            Get the official GEM Buddy Companion App for your Android device to customize your companion's eyes, set sleep timers, activate guard mode security, and synchronize settings.
                         </p>
-                        
-                        <!-- Notification Signup Form -->
-                        <form class="signup-form" id="booking-form">
-                            <div class="input-group">
-                                <input type="email" id="user-email" placeholder="Enter your email address" required aria-label="Email Address">
-                                <button type="submit" class="btn btn-primary" id="btn-submit-booking">Notify Me</button>
-                            </div>
-                            <p class="form-feedback-message" id="form-feedback"></p>
-                        </form>
+                        <div style="margin-top: 24px; display: flex; justify-content: center;">
+                            <a href="assets/app/gem-buddy-app.apk" class="btn btn-primary" style="font-size: 1.1rem; padding: 14px 32px; display: inline-flex; align-items: center;" download>
+                                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px; width: 20px; height: 20px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Download APK for Android
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -396,23 +394,10 @@
             </div>
             
             <div class="footer-bottom">
-                <p>&copy; 2026 GEM Buddy Project. All rights reserved. Bookings opening soon.</p>
+                <p>&copy; 2026 GEM Buddy Project. All rights reserved.</p>
             </div>
         </div>
     </footer>
-
-    <!-- Notification Dialog for pre-booking status -->
-    <div class="modal" id="success-modal">
-        <div class="modal-content">
-            <span class="modal-close" id="modal-close-btn">&times;</span>
-            <div class="success-icon-wrapper">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            </div>
-            <h3>Thank you for your interest!</h3>
-            <p>You've successfully subscribed to our early-bird release notifications. We will email you the moment bookings open!</p>
-            <button class="btn btn-primary" id="modal-ok-btn">Awesome</button>
-        </div>
-    </div>
 
     <!-- Script file -->
     <script src="app.js"></script>
