@@ -42,16 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
             showGuard: false
         },
         sleep: {
-            img: 'assets/images/gem_happy.jpg',
+            img: 'assets/images/gem_sleep.jpg',
             status: 'GEM is sleeping. Auto-dimmed display active. Standing by for touch waking.',
             ldr: 12,
-            showSleep: true,
-            showGuard: false
-        },
-        sad: {
-            img: 'assets/images/gem_sad.jpg',
-            status: 'Low battery warning or device disconnected. Checking backup state.',
-            ldr: 8,
             showSleep: false,
             showGuard: false
         },
