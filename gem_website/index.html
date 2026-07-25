@@ -209,41 +209,91 @@
         <!-- Companion App Showcase Section -->
         <section id="app" class="app-section">
             <div class="container app-container">
+                <!-- Stacked Header -->
+                <div class="app-header-center">
+                    <div class="badge badge-accent">Companion Dashboard</div>
+                    <h2 class="app-title">Total Control in <span class="gradient-text">Your Pocket</span></h2>
+                    <p class="app-text">
+                        The Flutter-built mobile companion app synchronizes parameters with GEM over your local network and cloud broker pings. Manage settings anywhere in the world.
+                    </p>
+                </div>
+
+                <!-- Showcase Carousel Visual -->
                 <div class="app-visual">
                     <div class="app-visual-glow"></div>
-                    <div class="phone-frame-wrapper">
-                        <button class="carousel-control prev" id="app-carousel-prev" aria-label="Previous Slide">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 20px; height: 20px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                        </button>
-                        <div class="phone-frame">
-                            <div class="phone-slideshow" id="phone-slideshow">
-                                <img src="assets/images/intro.jpg" alt="Onboarding Intro Screen" class="app-screenshot">
-                                <img src="assets/images/Setup screen.jpg" alt="Wi-Fi Setup Screen" class="app-screenshot">
-                                <img src="assets/images/home screen.jpg" alt="Home Dashboard Screen" class="app-screenshot">
-                                <img src="assets/images/control panel.jpg" alt="Device Control Panel Screen" class="app-screenshot">
-                                <img src="assets/images/Desk Security screen.jpg" alt="Desk Security Sentinel Screen" class="app-screenshot">
-                                <img src="assets/images/History screen.jpg" alt="Security Log History Screen" class="app-screenshot">
-                                <img src="assets/images/Update.jpg" alt="OTA Firmware Update Screen" class="app-screenshot">
-                                <img src="assets/images/Settings.jpg" alt="Device Settings Screen" class="app-screenshot">
-                                <img src="assets/images/Device Guid screen.jpg" alt="Device Guide Screen" class="app-screenshot">
+                    <div class="phone-carousel-viewport">
+                        <div class="phone-carousel-track" id="phone-carousel-track">
+                            <!-- Slide 1 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/intro.jpg" alt="Onboarding Intro Screen" class="app-screenshot">
+                                </div>
+                            </div>
+                            <!-- Slide 2 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/Setup screen.jpg" alt="Wi-Fi Setup Screen" class="app-screenshot">
+                                </div>
+                            </div>
+                            <!-- Slide 3 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/home screen.jpg" alt="Home Dashboard Screen" class="app-screenshot">
+                                </div>
+                            </div>
+                            <!-- Slide 4 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/control panel.jpg" alt="Device Control Panel Screen" class="app-screenshot">
+                                </div>
+                            </div>
+                            <!-- Slide 5 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/Desk Security screen.jpg" alt="Desk Security Sentinel Screen" class="app-screenshot">
+                                </div>
+                            </div>
+                            <!-- Slide 6 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/History screen.jpg" alt="Security Log History Screen" class="app-screenshot">
+                                </div>
+                            </div>
+                            <!-- Slide 7 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/Update.jpg" alt="OTA Firmware Update Screen" class="app-screenshot">
+                                </div>
+                            </div>
+                            <!-- Slide 8 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/Settings.jpg" alt="Device Settings Screen" class="app-screenshot">
+                                </div>
+                            </div>
+                            <!-- Slide 9 -->
+                            <div class="phone-slide">
+                                <div class="phone-frame">
+                                    <img src="assets/images/Device Guid screen.jpg" alt="Device Guide Screen" class="app-screenshot">
+                                </div>
                             </div>
                         </div>
-                        <button class="carousel-control next" id="app-carousel-next" aria-label="Next Slide">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 20px; height: 20px;"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                        </button>
                     </div>
+                    
+                    <!-- Controls -->
+                    <button class="carousel-control prev" id="app-carousel-prev" aria-label="Previous Slide">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 20px; height: 20px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                    <button class="carousel-control next" id="app-carousel-next" aria-label="Next Slide">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 20px; height: 20px;"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </button>
+                    
                     <!-- Dots pagination -->
                     <div class="carousel-dots" id="app-carousel-dots"></div>
                 </div>
                 
-                <div class="app-details">
-                    <div class="badge badge-accent">Companion Dashboard</div>
-                    <h2 class="app-title">Total Control in <br><span class="gradient-text">Your Pocket</span></h2>
-                    <p class="app-text" style="margin-bottom: 20px;">
-                        The Flutter-built mobile companion app synchronizes parameters with GEM over your local network and cloud broker pings. Manage settings anywhere in the world.
-                    </p>
-                    
-                    <!-- Dynamic Walkthrough Caption Card -->
+                <!-- Centered Caption Card -->
+                <div class="app-caption-container">
                     <div class="app-showcase-caption" id="app-showcase-caption">
                         <h4 id="carousel-slide-title">1. Welcome & Onboarding</h4>
                         <p id="carousel-slide-desc">Meet your GEM companion app. Get a brief introduction to what your desktop assistant can do.</p>

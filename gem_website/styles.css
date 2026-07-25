@@ -818,22 +818,43 @@ body {
    Companion App Showcase Section
    ========================================================================== */
 .app-section {
-    padding: 100px 0;
+    padding: 80px 0;
     background-color: rgba(5, 7, 12, 0.5);
+    overflow: hidden;
 }
 
 .app-container {
-    display: grid;
-    grid-template-columns: 0.9fr 1.1fr;
-    gap: 60px;
+    display: flex;
+    flex-direction: column;
     align-items: center;
+    gap: 40px;
+}
+
+.app-header-center {
+    text-align: center;
+    max-width: 750px;
+    margin-bottom: 20px;
+}
+
+.app-header-center .app-title {
+    font-size: 2.8rem;
+    line-height: 1.2;
+    margin-top: 15px;
+    margin-bottom: 20px;
 }
 
 .app-visual {
     position: relative;
+    width: 100%;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
+}
+
+.app-caption-container {
+    width: 100%;
+    max-width: 600px;
+    margin-top: 10px;
 }
 
 .app-visual-glow {
@@ -845,11 +866,46 @@ body {
     z-index: -1;
 }
 
-.phone-frame-wrapper {
+.phone-carousel-viewport {
+    width: 100%;
+    overflow: hidden;
     position: relative;
+    padding: 30px 0;
+    display: block;
+}
+
+.phone-carousel-track {
     display: flex;
-    justify-content: center;
     align-items: center;
+    position: relative;
+    left: 50%;
+    width: max-content;
+    transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.phone-slide {
+    flex-shrink: 0;
+    width: 280px;
+    margin: 0 30px;
+    transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.6s ease;
+    opacity: 0.12;
+    transform: scale(0.78);
+    pointer-events: none;
+}
+
+.phone-slide.active {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+    z-index: 3;
+}
+
+.phone-slide.prev-slide,
+.phone-slide.next-slide {
+    opacity: 0.45;
+    transform: scale(0.85);
+    pointer-events: auto;
+    z-index: 2;
 }
 
 .phone-frame {
@@ -859,19 +915,11 @@ body {
     border: 10px solid #1e293b;
     border-radius: 40px;
     overflow: hidden;
-    box-shadow: 0 30px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05);
+    box-shadow: 0 25px 50px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);
     position: relative;
 }
 
-.phone-slideshow {
-    display: flex;
-    width: 100%;
-    height: 100%;
-    transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
-}
-
 .app-screenshot {
-    flex-shrink: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -882,11 +930,11 @@ body {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     color: var(--text-primary);
     cursor: pointer;
     display: flex;
@@ -905,20 +953,20 @@ body {
 }
 
 .carousel-control.prev {
-    left: -64px;
+    left: calc(50% - 220px);
 }
 
 .carousel-control.next {
-    right: -64px;
+    right: calc(50% - 220px);
 }
 
 @media (max-width: 768px) {
     .carousel-control.prev {
-        left: -20px;
+        left: 10px;
         background: rgba(15, 23, 42, 0.95);
     }
     .carousel-control.next {
-        right: -20px;
+        right: 10px;
         background: rgba(15, 23, 42, 0.95);
     }
 }
@@ -979,10 +1027,6 @@ body {
     margin: 0;
 }
 
-.app-details {
-    padding-left: 20px;
-}
-
 .app-title {
     font-family: var(--ff-header);
     font-size: 2.75rem;
@@ -995,7 +1039,7 @@ body {
     color: var(--text-secondary);
     font-size: 1.1rem;
     line-height: 1.7;
-    margin-bottom: 36px;
+    margin-bottom: 0px;
 }
 
 .app-features-list {

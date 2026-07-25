@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 6. Interactive mobile app showcase carousel
-    const carouselTrack = document.getElementById('phone-slideshow');
+    const carouselTrack = document.getElementById('phone-carousel-track');
     const prevBtn = document.getElementById('app-carousel-prev');
     const nextBtn = document.getElementById('app-carousel-next');
     const dotsContainer = document.getElementById('app-carousel-dots');
@@ -235,8 +235,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function goToSlide(index) {
             currentSlideIndex = index;
-            // Slide transition
-            carouselTrack.style.transform = `translateX(-${currentSlideIndex * 100}%)`;
+            // Slide transition: shift track left relative to center-viewport anchor (left: 50%)
+            carouselTrack.style.transform = `translateX(calc(-170px - ${currentSlideIndex * 340}px))`;
+            
+            // Update active, prev, and next classes on slides
+            const slides = document.querySelectorAll('.phone-slide');
+            slides.forEach((slide, idx) => {
+                slide.classList.remove('active', 'prev-slide', 'next-slide');
+                if (idx === currentSlideIndex) {
+                    slide.classList.add('active');
+                } else if (idx === currentSlideIndex - 1) {
+                    slide.classList.add('prev-slide');
+                } else if (idx === currentSlideIndex + 1) {
+                    slide.classList.add('next-slide');
+                }
+            });
             
             // Update dots
             dots.forEach((dot, idx) => {
@@ -301,6 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
             captionDesc.style.transition = 'opacity 0.25s ease';
         }
 
+        goToSlide(0);
         startAutoSlide();
     }
 });
