@@ -262,6 +262,55 @@ document.addEventListener('DOMContentLoaded', () => {
             startAutoSlide();
         }
 
+        // Gesture swipe/drag support (mouse & touch)
+        let isDragging = false;
+        let startX = 0;
+        let currentX = 0;
+        let diffX = 0;
+        const swipeThreshold = 50; // pixels of movement required to trigger slide change
+
+        const handleDragStart = (e) => {
+            isDragging = true;
+            startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+            if (e.type === 'mousedown') {
+                e.preventDefault();
+            }
+            clearInterval(autoSlideInterval);
+        };
+
+        const handleDragMove = (e) => {
+            if (!isDragging) return;
+            currentX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+            diffX = currentX - startX;
+        };
+
+        const handleDragEnd = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            if (Math.abs(diffX) > swipeThreshold) {
+                if (diffX > 0) {
+                    prevSlide();
+                } else {
+                    nextSlide();
+                }
+            }
+            diffX = 0;
+            resetAutoSlide();
+        };
+
+        if (carouselViewport) {
+            // Touch events
+            carouselViewport.addEventListener('touchstart', handleDragStart, { passive: true });
+            carouselViewport.addEventListener('touchmove', handleDragMove, { passive: true });
+            carouselViewport.addEventListener('touchend', handleDragEnd);
+
+            // Mouse events
+            carouselViewport.addEventListener('mousedown', handleDragStart);
+            document.addEventListener('mousemove', handleDragMove);
+            document.addEventListener('mouseup', handleDragEnd);
+        }
+
         // Initialize transition effects on captions
         if (captionTitle && captionDesc) {
             captionTitle.style.transition = 'opacity 0.25s ease';
