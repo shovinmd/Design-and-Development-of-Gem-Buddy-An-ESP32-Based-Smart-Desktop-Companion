@@ -1,23 +1,26 @@
 # GEM (Gem Buddy) — Smart Desktop Companion (v2.0)
 
-[![Get Build of the Device](https://img.shields.io/badge/Get%20Build%20of%20the%20Device-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://design-and-development-of-gem-buddy.vercel.app/)
-
-## 📸 Project Showcase
-
-### 📟 Physical Device
-![GEM Smart Desktop Companion](gem_website/assets/images/device_real.jpg)
-
-### 📱 Companion App
-![GEM Companion App Showcase](gem_website/assets/images/intro.jpg)
-
----
+[![Live Showcase](https://img.shields.io/badge/Live%20Showcase-Vercel-blueviolet?style=for-the-badge)](https://design-and-development-of-gem-buddy.vercel.app/)
 
 GEM is an interactive, ESP32-based smart desktop companion featuring hardware sensors, a custom OLED animation system (day/evening/night face modes), scheduled alarms, and a secure **Desk Guard Mode**. 
 
+### 🔗 Useful Links
+- **Live Visual Showcase & Web App**: [https://design-and-development-of-gem-buddy.vercel.app/](https://design-and-development-of-gem-buddy.vercel.app/)
+- **Companion App Version**: v1.2
+- **Firmware Version**: v2.0
+
 This repository contains the complete three-tier architecture:
-1.  **📟 ESP32 Firmware** (`GemBuddy/`): Written in Arduino/C++, driving the OLED display, light sensor (LDR), capacitive touch pins, buzzer, and OTA updater.
-2.  **📱 Flutter Companion App** (`gem_buddy_app/`): Cross-platform dashboard to manage alarms, LDR telemetry, lamp controls, OTA updates, and security logs.
-3.  **☁️ Cloud Webhook Broker** (`gem_server/`): Node.js/Express server that acts as a real-time bridge via WebSockets and sends Push Notifications (FCM) to the mobile app.
+1. **📟 ESP32 Firmware** (`GemBuddy/`): Written in Arduino/C++, driving the OLED display, light sensor (LDR), capacitive touch pins, buzzer, and OTA updater.
+2. **📱 Flutter Companion App** (`gem_buddy_app/`): Cross-platform dashboard to manage alarms, LDR telemetry, lamp controls, OTA updates, and security logs.
+3. **☁️ Cloud Webhook Broker** (`gem_server/`): Node.js/Express server that acts as a real-time bridge via WebSockets and sends Push Notifications (FCM) to the mobile app.
+
+---
+
+## 📸 Visual Showcase
+
+| 📟 Real physical GEM Device | 📱 Companion Mobile App Dashboard |
+| :---: | :---: |
+| ![GEM Real Device](gem_website/assets/images/device_real.jpg) | ![GEM Mobile App Dashboard](gem_website/assets/images/home%20screen.jpg) |
 
 ---
 
