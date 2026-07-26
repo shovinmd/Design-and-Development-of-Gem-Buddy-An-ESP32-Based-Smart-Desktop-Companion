@@ -16,13 +16,6 @@ This repository contains the complete three-tier architecture:
 
 ---
 
-## 📸 Visual Showcase
-
-| 📟 Real physical GEM Device | 📱 Companion Mobile App Dashboard |
-| :---: | :---: |
-| ![GEM Real Device](gem_website/assets/images/device_real.jpg) | ![GEM Mobile App Dashboard](gem_website/assets/images/home%20screen.jpg) |
-
----
 
 ## 🏗️ System Architecture
 
