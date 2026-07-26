@@ -1,5 +1,17 @@
 # GEM (Gem Buddy) — Smart Desktop Companion (v2.0)
 
+[![Get Build of the Device](https://img.shields.io/badge/Get%20Build%20of%20the%20Device-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://design-and-development-of-gem-buddy.vercel.app/)
+
+## 📸 Project Showcase
+
+### 📟 Physical Device
+![GEM Smart Desktop Companion](gem_website/assets/images/device_real.jpg)
+
+### 📱 Companion App
+![GEM Companion App Showcase](gem_website/assets/images/intro.jpg)
+
+---
+
 GEM is an interactive, ESP32-based smart desktop companion featuring hardware sensors, a custom OLED animation system (day/evening/night face modes), scheduled alarms, and a secure **Desk Guard Mode**. 
 
 This repository contains the complete three-tier architecture:
