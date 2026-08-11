@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const iframeWrapper = document.getElementById('player-iframe-wrapper');
             if (iframeWrapper) {
-                iframeWrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/EwBLpG_TGUQ?autoplay=1&rel=0" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 20px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+                iframeWrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/l00o5oz1m1Y?autoplay=1&rel=0" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 20px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
             }
         });
     }
@@ -320,5 +320,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         goToSlide(0);
         startAutoSlide();
+    }
+
+    // 7. APK Download Prompt
+    const downloadApkBtn = document.getElementById('download-apk-btn');
+    if (downloadApkBtn) {
+        downloadApkBtn.addEventListener('click', (e) => {
+            const proceed = confirm("Please watch the tutorial video first to understand the setup process! Click OK to proceed with the download.");
+            if (!proceed) {
+                e.preventDefault();
+            }
+        });
     }
 });
