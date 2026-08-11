@@ -322,14 +322,48 @@ document.addEventListener('DOMContentLoaded', () => {
         startAutoSlide();
     }
 
-    // 7. APK Download Prompt
+    // 7. Custom APK Download Modal Prompt
     const downloadApkBtn = document.getElementById('download-apk-btn');
-    if (downloadApkBtn) {
+    const downloadModal = document.getElementById('download-modal');
+    const closeModalBtn = document.getElementById('close-modal-btn');
+    const modalCancelBtn = document.getElementById('modal-cancel-btn');
+    const modalOkBtn = document.getElementById('modal-ok-btn');
+
+    if (downloadApkBtn && downloadModal) {
+        // Show modal when clicking download button
         downloadApkBtn.addEventListener('click', (e) => {
-            const proceed = confirm("Please watch the tutorial video first to understand the setup process! Click OK to proceed with the download.");
-            if (!proceed) {
-                e.preventDefault();
+            e.preventDefault();
+            downloadModal.classList.add('active');
+        });
+
+        // Hide modal helper
+        const hideModal = () => {
+            downloadModal.classList.remove('active');
+        };
+
+        // Close event listeners
+        if (closeModalBtn) closeModalBtn.addEventListener('click', hideModal);
+        if (modalCancelBtn) modalCancelBtn.addEventListener('click', hideModal);
+
+        // Click outside modal card to close
+        downloadModal.addEventListener('click', (e) => {
+            if (e.target === downloadModal) {
+                hideModal();
             }
         });
+
+        // Confirm download when OK is clicked
+        if (modalOkBtn) {
+            modalOkBtn.addEventListener('click', () => {
+                hideModal();
+                // Programmatically trigger download
+                const tempLink = document.createElement('a');
+                tempLink.href = downloadApkBtn.href;
+                tempLink.download = downloadApkBtn.getAttribute('download') || 'Gem v1.2.0.apk';
+                document.body.appendChild(tempLink);
+                tempLink.click();
+                document.body.removeChild(tempLink);
+            });
+        }
     }
 });
