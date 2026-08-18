@@ -9,6 +9,7 @@
  * - IR Distance / Proximity Motion Monitoring Sensor (GPIO 34)
  * - MAX30102 PPG Pulse Oximeter & Heart Rate Sensor (I2C 0x57)
  * - 4 White LED Bulbs (GPIO 4) (Pulse & Motion Synced)
+ * - Piezo Audio Buzzer (GPIO 25) (Touch Beeps, Alarms & Biometric Pulse Chimes)
  * - 1500mAh Rechargeable LiPo Battery via Type-C
  * - Real-time Biometric & Motion Telemetry via GEM Mobile App
  * - Wi-Fi 2.4GHz & Low-Latency Bluetooth Sync
@@ -29,6 +30,7 @@
 #define IR_PROXIMITY_PIN 34
 #define WHITE_LEDS_PIN 4
 #define NUM_WHITE_LEDS 4
+#define BUZZER_PIN 25
 
 // Battery Specs
 #define BATTERY_CAPACITY_MAH 1500
@@ -38,7 +40,7 @@
 #define ENABLE_PULSE_SENSOR true
 #define ENABLE_TOUCH_SENSOR true
 #define ENABLE_WHITE_LEDS true
-#define ENABLE_RGB_MOOD_LIGHTS false
+#define ENABLE_AUDIO_BUZZER true
 #define ENABLE_WIFI_SYNC true
 #define ENABLE_GEM_APP_SUPPORT true
 #define ENABLE_BIOMETRIC_TELEMETRY true

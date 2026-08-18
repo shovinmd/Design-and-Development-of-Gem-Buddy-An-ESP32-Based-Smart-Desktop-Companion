@@ -7,6 +7,7 @@
  * - 0.96" High-Contrast I2C OLED (128x64) Expression Display
  * - Touch Capacitive Sensor (GPIO 15)
  * - 4 White LED Ambient Bulbs (GPIO 4) (Pure White Illumination)
+ * - Piezo Audio Buzzer (GPIO 25) (Touch Beeps & Sound Chimes)
  * - 1000mAh Rechargeable LiPo Battery via Type-C
  * - Wi-Fi 2.4GHz & Low-Latency Bluetooth Sync with GEM Mobile App
  * 
@@ -26,6 +27,7 @@
 #define TOUCH_SENSOR_PIN 15
 #define WHITE_LEDS_PIN 4
 #define NUM_WHITE_LEDS 4
+#define BUZZER_PIN 25
 
 // Battery Specs
 #define BATTERY_CAPACITY_MAH 1000
@@ -35,7 +37,7 @@
 #define ENABLE_PULSE_SENSOR false
 #define ENABLE_TOUCH_SENSOR true
 #define ENABLE_WHITE_LEDS true
-#define ENABLE_RGB_MOOD_LIGHTS false
+#define ENABLE_AUDIO_BUZZER true
 #define ENABLE_WIFI_SYNC true
 #define ENABLE_GEM_APP_SUPPORT true
 
